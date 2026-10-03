@@ -1,3 +1,4 @@
+import { applyNativeInputReceipts, hasNativeInputMetadata } from "./native_input";
 import { compareEventOrder } from "./seq_order";
 
 export type AcpToolCall = {
@@ -138,6 +139,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
   const messageIndex = new Map<string, number>();
   const messageChunks = new Map<string, Map<number, string>>();
   const rawEvents: AcpRawEvent[] = [];
+  const inputReceipts: AcpEventLine[] = [];
   let configOptions: AcpConfigOption[] = [];
   let plan: AcpPlanView | null = null;
   let commands: AcpCommand[] = [];
@@ -155,6 +157,10 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       type: String(parsed.type ?? "unknown"),
       payload: parsed,
     });
+    if (parsed.type === "input_receipt") {
+      inputReceipts.push(event);
+      continue;
+    }
     if (parsed.type === "config_option_update") {
       const parsedConfigOptions = parseAcpConfigOptions(parsed);
       if (parsedConfigOptions !== null) {
@@ -194,7 +200,8 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
         last &&
         last.kind === "user_message" &&
         last.session_id === (event.session_id ?? null) &&
-        last.text === text
+        last.text === text &&
+        !hasNativeInputMetadata(messageMeta)
       ) {
         continue;
       }
@@ -441,6 +448,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
     currentMode ??
     configOptions.find((option) => option.id === "mode")?.currentValueId ??
     null;
+  applyNativeInputReceipts(messages, inputReceipts);
   closeStaleLiveToolCalls(toolCalls, messages, runStatus);
   return {
     hasAcp:

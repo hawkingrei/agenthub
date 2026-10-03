@@ -19,12 +19,13 @@ Checkpoint: [ACP rollout integration](journal/2026-09-21-acp-rollout-integration
 - [x] Verify assembled ACP, scoped Mem, App revocation/events and browser-independent lifecycle.
 - [x] Publish supported-provider, configuration, recovery and troubleshooting guidance.
 - [x] Merge PR #1169 after applicable current-head CI.
-- [ ] Land the follow-up excluding revoked sources from execution reads while retaining their
+- [x] Land the follow-up excluding revoked sources from execution reads while retaining their
   history. Evidence: [revoked execution sources](journal/2026-09-27-loop-revoked-execution-sources.md).
 
-Native runtime slices 16-18 and upstream prerequisites are deferred. Preserve draft PR #1168 and
-its unfinished work; they are not gates for this ACP rollout. Remote loop ownership, non-Linux
-guardians, standalone Mem scope, App authoring UI and cross-owner consent remain separate scope.
+Native runtime acceptance and upstream prerequisites remain deferred. PR #1168 integrates the
+existing slices 16-18 with the current mainline; completing tool sources, semantic outcomes and
+approval persistence remains separate work, not a gate for this ACP rollout. Remote loop ownership,
+non-Linux guardians, standalone Mem scope, App authoring UI and cross-owner consent remain separate scope.
 
 ## Release And Packaging
 

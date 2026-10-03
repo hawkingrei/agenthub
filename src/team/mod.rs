@@ -33,7 +33,6 @@ pub(crate) use mailbox_hint::{
     TeamMailboxRuntimeDeliveryWorkerSettings, TeamMailboxUnreadHintWorker,
     TeamMailboxUnreadHintWorkerSettings, plan_actor_mailbox_immediate_hint,
 };
-pub(crate) use manager::TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX;
 #[cfg(test)]
 pub(crate) use manager::mailbox_runtime_delivery_id;
 #[allow(unused_imports)]
@@ -46,6 +45,7 @@ pub use manager::{
     TeamTaskNoteCreateInput, TeamTaskUpdateWithNoteInput, TeamspaceInviteRecord,
     TeamspaceMemberRecord,
 };
+pub(crate) use manager::{TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX, TeamMemberCardRecord};
 pub(crate) use manager::{
     TeamRuntimeDeliveryReceipt, count_pending_conversation_body_migration,
     migrate_conversation_bodies_into_store, runtime_delivery_retry_delay_seconds,

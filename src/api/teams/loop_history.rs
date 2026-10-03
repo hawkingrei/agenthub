@@ -7,6 +7,13 @@ use agenthub_db::loop_runtime::LoopStore;
 
 use super::*;
 
+#[derive(Serialize)]
+pub(super) struct ActivationDetail {
+    #[serde(flatten)]
+    activation: LoopActivation,
+    runtime: Option<agenthub_db::runtime_events::RuntimeHistory>,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct HistoryQuery {
@@ -97,7 +104,7 @@ pub(super) async fn get_activation(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((team_id, actor_id, id)): Path<(String, String, String)>,
-) -> Result<Json<LoopActivation>, ApiError> {
+) -> Result<Json<ActivationDetail>, ApiError> {
     let store = authorize_history(&state, &headers, &team_id, &actor_id).await?;
     validate_loop_id(&id).map_err(|_| ApiError::bad_request("invalid activation reference"))?;
     let activation = store
@@ -106,7 +113,19 @@ pub(super) async fn get_activation(
         .map_err(map_team_internal_error)?
         .filter(|activation| activation.actor_id == actor_id)
         .ok_or_else(|| ApiError::not_found("activation not found"))?;
-    Ok(Json(activation))
+    let runtime = if let Some(session_id) = activation.session_id.as_deref() {
+        state
+            .agents
+            .runtime_history(&actor_id, session_id, 25, None)
+            .await
+            .map_err(map_team_internal_error)?
+    } else {
+        None
+    };
+    Ok(Json(ActivationDetail {
+        activation,
+        runtime,
+    }))
 }
 
 pub(super) async fn list_sources(

@@ -1,4 +1,7 @@
 pub mod path_utils;
+pub mod rara;
+
+pub use rara::{RaraConfig, RaraLaunchConfig};
 
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -30,6 +33,7 @@ pub struct AppConfig {
     pub proxy: Option<ProxyConfig>,
     pub worktree: Option<WorktreeConfig>,
     pub codex_acp: Option<CodexAcpConfig>,
+    pub rara: Option<RaraConfig>,
     pub nowledge_mem: Option<NowledgeMemConfig>,
     pub history: Option<HistoryConfig>,
     pub message_archive: Option<MessageArchiveConfig>,
@@ -454,6 +458,13 @@ impl AppConfig {
             .as_ref()
             .and_then(|c| c.binary.clone())
             .unwrap_or_else(|| "agenthubd".to_string())
+    }
+
+    pub fn rara_launch_config(&self) -> anyhow::Result<RaraLaunchConfig> {
+        self.rara
+            .clone()
+            .unwrap_or_default()
+            .resolve_with(|key| std::env::var(key).ok())
     }
 
     pub fn codex_runtime_binary(&self) -> String {
@@ -921,6 +932,11 @@ fn detect_env_overrides() -> Vec<String> {
         "AGENTHUB_LOG_PATH",
         "AGENTHUB_CODEX_ACP_BINARY",
         "AGENTHUB_CODEX_ACP_DEFAULT_MODE",
+        "AGENTHUB_RARA_BINARY",
+        "AGENTHUB_RARA_PROVIDER",
+        "AGENTHUB_RARA_MODEL",
+        "AGENTHUB_RARA_STARTUP_TIMEOUT_SECONDS",
+        "AGENTHUB_RARA_SHUTDOWN_TIMEOUT_SECONDS",
         "AGENTHUB_HISTORY_EVENT_RETENTION_DAYS",
         "AGENTHUB_HISTORY_VACUUM_ON_CLEANUP",
         "AGENTHUB_INTERNAL_GRPC_ENABLED",

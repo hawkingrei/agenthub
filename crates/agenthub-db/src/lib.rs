@@ -22,6 +22,7 @@ pub mod loop_runtime;
 pub mod mcp_operations;
 pub mod message_body_outbox;
 pub mod object_uploads;
+pub mod runtime_events;
 mod time_triggers;
 
 pub use time_triggers::migrate_time_triggers;
@@ -212,15 +213,21 @@ impl AgentEventDbRouter {
                 .clone()
         };
 
-        cell.get_or_try_init(|| async {
-            let db_path = self.db_path_for_agent(agent_id);
-            ensure_sqlite_path(&db_path)?;
-            let pool = connect_sqlite_with_defaults(&db_path, 2).await?;
-            init_agent_event_db_schema(&pool).await?;
-            Ok(pool)
-        })
-        .await
-        .cloned()
+        cell.get_or_try_init(|| self.open_uncached_pool_for_agent(agent_id))
+            .await
+            .cloned()
+    }
+
+    /// Open an initialized pool without retaining it in the router. The caller owns its lifetime.
+    pub async fn open_uncached_pool_for_agent(&self, agent_id: &str) -> anyhow::Result<SqlitePool> {
+        let db_path = self.db_path_for_agent(agent_id);
+        ensure_sqlite_path(&db_path)?;
+        let pool = connect_sqlite_with_defaults(&db_path, 2).await?;
+        if let Err(error) = init_agent_event_db_schema(&pool).await {
+            pool.close().await;
+            return Err(error);
+        }
+        Ok(pool)
     }
 
     pub async fn remove_agent_db(&self, agent_id: &str) -> anyhow::Result<()> {
@@ -2310,6 +2317,7 @@ async fn init_agent_event_db_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     .await?;
     migrate_per_agent_events_message_column_to_blob(pool).await?;
     ensure_per_agent_event_db_indexes(pool).await?;
+    runtime_events::migrate(pool).await?;
     Ok(())
 }
 
@@ -6563,6 +6571,50 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
+    }
+
+    #[tokio::test]
+    async fn uncached_event_pools_preserve_schema_and_cached_readers() {
+        let dir = unique_temp_dir("db-uncached-event-pools");
+        let router = AgentEventDbRouter::new(dir.clone());
+        let cached = router.pool_for_agent("cached").await.unwrap();
+        for agent_id in ["cold", "cached"] {
+            let temporary = router.open_uncached_pool_for_agent(agent_id).await.unwrap();
+            sqlx::query("INSERT INTO runtime_event_owners (runtime_id, local_session_id) VALUES ('runtime', 'local')")
+                .execute(&temporary).await.unwrap();
+            temporary.close().await;
+            let reopened = router.open_uncached_pool_for_agent(agent_id).await.unwrap();
+            let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM runtime_event_owners")
+                .fetch_one(&reopened)
+                .await
+                .unwrap();
+            assert_eq!(count, 1);
+            reopened.close().await;
+        }
+        assert!(!cached.is_closed());
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM runtime_event_owners")
+            .fetch_one(&cached)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+        let invalid = super::connect_sqlite_with_defaults(&router.db_path_for_agent("invalid"), 1)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE runtime_event_owners (runtime_id TEXT)")
+            .execute(&invalid)
+            .await
+            .unwrap();
+        invalid.close().await;
+        assert!(
+            router
+                .open_uncached_pool_for_agent("invalid")
+                .await
+                .is_err()
+        );
+        let keys: Vec<_> = router.pools.lock().await.keys().cloned().collect();
+        assert_eq!(keys, ["cached"]);
+        cached.close().await;
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[tokio::test]

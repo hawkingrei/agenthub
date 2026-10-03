@@ -1,3 +1,4 @@
+import type { NativeInputTarget } from "./native_input";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
@@ -571,6 +572,7 @@ export function App() {
       recordHistory?: boolean;
       clearComposer?: boolean;
       images?: AgentInputImage[];
+      nativeInput?: NativeInputTarget;
     }
   ) => {
     const text = rawText.trim();
@@ -592,7 +594,8 @@ export function App() {
         text,
         messageId ?? undefined,
         sessionId ?? undefined,
-        images
+        images,
+        options?.nativeInput
       );
     try {
       await sendInputForSession(activeSessionId);
@@ -608,7 +611,7 @@ export function App() {
       } catch (err: unknown) {
         const msg = parseApiErrorMessage(err) ?? String(err || "websocket not connected");
         const sessionMismatch = parseSendInputSessionMismatch(msg);
-        if (sessionMismatch) {
+        if (sessionMismatch && !options?.nativeInput) {
           const runningSessionId = sessionMismatch.running;
           setActiveSessionId(runningSessionId);
           setAgentSessions((prev) => ({ ...prev, [activeAgent]: runningSessionId }));
@@ -638,6 +641,7 @@ export function App() {
         if (msg.includes(AGENT_NOT_RUNNING_ERROR)) {
           await refreshAgents();
         }
+        if (options?.nativeInput) throw err;
       }
   }, [
     auth?.token,

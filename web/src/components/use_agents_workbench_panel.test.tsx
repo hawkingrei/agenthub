@@ -297,6 +297,11 @@ describe("useAgentsWorkbenchPanel", () => {
 
     expect(jumpToConversationBottom).toHaveBeenCalledTimes(1);
     expect(onSendAcpInput).toHaveBeenCalledWith("approve");
+    const target = { runtime_id: "runtime", session_id: "native", turn_id: "waiting" };
+    await act(async () => {
+      await submitRequestUserInput?.("native answer", target);
+    });
+    expect(onSendAcpInput).toHaveBeenCalledWith("native answer", { nativeInput: target });
     expect(latestResult?.acpPanelProps.debug?.canCancelRun).toBe(false);
     expect(latestResult?.inputDockJumpMode.showConversationJump).toBe(true);
   });

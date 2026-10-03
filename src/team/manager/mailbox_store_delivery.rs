@@ -109,7 +109,8 @@ impl SqlActorMailboxStore {
         &self,
         cmd: &AckActorMessageCommand,
     ) -> Result<AckActorMessageResult, SqlActorMailboxStoreError> {
-        let mut tx = self.db.begin().await?;
+        // Acquire the writer before reading so concurrent writers cannot invalidate the ACK snapshot.
+        let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
         let current = fetch_message_for_actor(
             &mut tx,
             &cmd.run_id,

@@ -1,3 +1,4 @@
+import type { NativeInputTarget } from "../native_input";
 import React from "react";
 import type { AcpPanelProps } from "./acp_panel";
 import { buildAcpRuntimeMetrics } from "./agents_workbench_metrics";
@@ -98,9 +99,10 @@ export function useAgentsWorkbenchPanel({
   }, [jumpToConversationBottom, input, inputImages, onSendAcpInput]);
 
   const onSubmitRequestUserInput = React.useCallback(
-    async (text: string) => {
+    async (text: string, target?: NativeInputTarget) => {
       jumpToConversationBottom();
-      await onSendAcpInput(text);
+      if (target) await onSendAcpInput(text, { nativeInput: target });
+      else await onSendAcpInput(text);
     },
     [jumpToConversationBottom, onSendAcpInput]
   );

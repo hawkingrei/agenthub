@@ -1,3 +1,4 @@
+import type { NativeInputTarget } from "../../native_input";
 import React from "react";
 import { buildAcpView } from "../../acp";
 import { isAgentActiveStatus } from "../../agent_ws";
@@ -66,7 +67,7 @@ type UseTeamMemberAcpViewModelArgs = {
   acpConfigValue: string;
   canControlAcp?: boolean;
   canInterrupt?: boolean;
-  onSendInput?: (input: string, sessionId: string) => Promise<void> | void;
+  onSendInput?: (input: string, sessionId: string, target?: NativeInputTarget) => Promise<void> | void;
   onInterrupt?: () => Promise<void> | void;
   onAcpSetMode?: (modeId: string) => Promise<void> | void;
   onAcpSetModel?: (modelId: string) => Promise<void> | void;
@@ -82,7 +83,7 @@ type UseTeamMemberAcpViewModelArgs = {
   terminalRef: React.RefObject<HTMLDivElement | null>;
   handleTerminalScroll: () => void;
   jumpToTerminalBottom: () => void;
-  handleSubmitRequestUserInput: (text: string) => Promise<void>;
+  handleSubmitRequestUserInput: (text: string, target?: NativeInputTarget) => Promise<void>;
 };
 
 export function useTeamMemberAcpViewModel({

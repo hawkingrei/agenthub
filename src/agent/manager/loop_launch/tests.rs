@@ -12,6 +12,8 @@ mod apps;
 mod browser;
 mod mcp;
 mod mem;
+mod native;
+mod native_process;
 mod real_runtime;
 mod recovery;
 mod roles;

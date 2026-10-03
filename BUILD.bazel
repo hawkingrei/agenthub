@@ -58,6 +58,7 @@ rust_library(
     deps = all_crate_deps(normal = True) + [
         "//crates/agenthub-acp:agenthub_acp",
         "//crates/agenthub-acp-core:agenthub_acp_core",
+        "//crates/agenthub-rara:agenthub_rara",
         "//crates/agenthub-internal-p2p:agenthub_internal_p2p",
         "//crates/agenthub-text:agenthub_text",
         "//crates/agenthub-team-actor:agenthub_team_actor",

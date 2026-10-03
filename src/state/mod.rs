@@ -100,6 +100,9 @@ impl AppState {
         let agent_node_join_bootstrap = Self::build_agent_node_join_bootstrap(&config)?;
 
         Self::run_startup_cleanup(&agents, &teams).await?;
+        agents
+            .recover_runtime_receipts_on_startup(daemon_instance)
+            .await?;
         Self::spawn_startup_workers(
             &db,
             &agents,

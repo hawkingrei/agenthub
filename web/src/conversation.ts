@@ -243,6 +243,7 @@ export function buildConversationMessages(
         kind: "user_message",
         text: msg.text,
         media: msg.media,
+        delivery: msg.delivery,
         seq: msg.seq,
         event_id: msg.event_id,
         ts: msg.ts,

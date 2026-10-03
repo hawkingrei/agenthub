@@ -1,3 +1,4 @@
+import type { NativeInputTarget } from "../native_input";
 import React from "react";
 import { isAgentActiveStatus } from "../agent_ws";
 import { AgentEvent, TeamMemberSnapshot } from "../api";
@@ -64,7 +65,7 @@ type TeamMemberAcpPanelProps = {
   memberEventsLoading: boolean;
   eventsLoading: boolean;
   oldestMemberEventId: number | null;
-  onSendInput?: (input: string, sessionId: string) => Promise<void> | void;
+  onSendInput?: (input: string, sessionId: string, target?: NativeInputTarget) => Promise<void> | void;
   canControlAcp?: boolean;
   canInterrupt?: boolean;
   onInterrupt?: () => Promise<void> | void;

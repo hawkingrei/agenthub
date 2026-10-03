@@ -1,3 +1,4 @@
+import type { NativeInputTarget } from "../native_input";
 import React from "react";
 import { AcpView } from "../acp";
 import { AcpPermissionRecord, AgentInputImage, AgentRecord } from "../api";
@@ -8,6 +9,7 @@ export type SendAcpInputOptions = {
   recordHistory?: boolean;
   clearComposer?: boolean;
   images?: AgentInputImage[];
+  nativeInput?: NativeInputTarget;
 };
 
 export type AgentsWorkbenchProps = {

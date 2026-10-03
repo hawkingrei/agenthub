@@ -1,3 +1,4 @@
+import type { NativeInputTarget } from "../native_input";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
@@ -2456,10 +2457,13 @@ export function TeamPage(props: TeamPageProps) {
     void refreshRun(activeRunIdForSelectedTeam).catch((err) => setError(parseErrorMessage(err)));
   }, [activeRunIdForSelectedTeam, refreshRun, setError]);
   const onSendAgentAcpInput = useCallback(
-    async (text: string, sessionId: string) => {
+    async (text: string, sessionId: string, target?: NativeInputTarget) => {
       const agentId = selectedAgentWorkspaceEventAgentId.trim();
       const normalizedText = text.trim();
       if (!props.token || !agentId || !normalizedText || !sessionId) {
+        if (target) {
+          throw new Error("Input was not sent. Reopen the member workspace and retry.");
+        }
         return;
       }
       setError(null);
@@ -2468,14 +2472,16 @@ export function TeamPage(props: TeamPageProps) {
           ? crypto.randomUUID()
           : `team-agent-acp-${Date.now()}`;
       const sendForSession = (nextSessionId: string) =>
-        api.sendInput(props.token, agentId, normalizedText, messageId, nextSessionId);
+        target
+          ? api.sendInput(props.token, agentId, normalizedText, messageId, nextSessionId, [], target)
+          : api.sendInput(props.token, agentId, normalizedText, messageId, nextSessionId);
       try {
         await sendForSession(sessionId);
         await loadMemberEvents("replace");
       } catch (err) {
         const msg = parseErrorMessage(err);
         const mismatch = parseTeamAgentInputSessionMismatch(msg);
-        if (mismatch) {
+        if (mismatch && !target) {
           try {
             await sendForSession(mismatch.running);
             setSelectedAgentWorkspaceStickySession({
@@ -2530,6 +2536,7 @@ export function TeamPage(props: TeamPageProps) {
           }
           void refreshAgents().catch(() => undefined);
         }
+        if (target) throw err;
       }
     },
     [

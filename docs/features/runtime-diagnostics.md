@@ -101,6 +101,12 @@ an unknown explicit activation returns 404 after capability authorization.
 
 ### Activation evidence and classifications
 
+The optional `activation.runtime` snapshot contains the selected local session's native runtime
+identity, committed stream cursors and gaps, and bounded control receipts with safe ACK fields.
+It remains available after completion or interruption. Diagnostics open its event database read-only;
+legacy databases without native ownership tables return no snapshot. Receipt acceptance is separate
+from event persistence and cleanup, and a missing binding never falls back to another runtime.
+
 The optional `activation` report contains bounded source/event/tool pages, a separately queried
 latest event, safe lease generation/expiry, the recorded outcome, a verified continuation link,
 current actor next wake, typed active scheduling conditions, and scoped metrics. Each history page

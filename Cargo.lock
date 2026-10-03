@@ -395,6 +395,7 @@ dependencies = [
  "agenthub-object-store",
  "agenthub-push",
  "agenthub-pyroscope",
+ "agenthub-rara",
  "agenthub-team-actor",
  "agenthub-team-domain",
  "agenthub-team-prompts",
@@ -625,6 +626,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "thiserror 2.0.20",
  "tokio",
@@ -804,6 +806,19 @@ version = "0.0.10"
 dependencies = [
  "pyroscope",
  "tracing",
+]
+
+[[package]]
+name = "agenthub-rara"
+version = "0.0.10"
+dependencies = [
+ "agenthub-config",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
 ]
 
 [[package]]

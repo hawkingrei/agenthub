@@ -1,10 +1,11 @@
+import type { NativeInputTarget } from "../../native_input";
 import React from "react";
 import { pushInputHistory } from "../../input_history";
 
 type UseTeamMemberAcpInputArgs = {
   selectedMemberId: string;
   selectedSessionId: string | null;
-  onSendInput?: (input: string, sessionId: string) => Promise<void> | void;
+  onSendInput?: (input: string, sessionId: string, target?: NativeInputTarget) => Promise<void> | void;
 };
 
 export function useTeamMemberAcpInput({
@@ -40,16 +41,18 @@ export function useTeamMemberAcpInput({
     options?: {
       recordHistory?: boolean;
       clearComposer?: boolean;
+      nativeInput?: NativeInputTarget;
     }
   ) => {
     const text = rawText.trim();
     if (!text || !selectedSessionId || !onSendInput || sendingInputRef.current) {
-      return;
+      return false;
     }
     sendingInputRef.current = true;
     setSendingInput(true);
     try {
-      await onSendInput(text, selectedSessionId);
+      if (options?.nativeInput) await onSendInput(text, selectedSessionId, options.nativeInput);
+      else await onSendInput(text, selectedSessionId);
       if (options?.recordHistory) {
         setInputHistory((prev) => pushInputHistory(prev, text));
         setInputHistoryCursor(-1);
@@ -62,6 +65,7 @@ export function useTeamMemberAcpInput({
       sendingInputRef.current = false;
       setSendingInput(false);
     }
+    return true;
   }, [onSendInput, selectedSessionId]);
 
   const handleSendInput = React.useCallback(async () => {
@@ -71,8 +75,11 @@ export function useTeamMemberAcpInput({
     });
   }, [input, sendMemberInput]);
 
-  const handleSubmitRequestUserInput = React.useCallback(async (text: string) => {
-    await sendMemberInput(text);
+  const handleSubmitRequestUserInput = React.useCallback(async (text: string, target?: NativeInputTarget) => {
+    const sent = await sendMemberInput(text, { nativeInput: target });
+    if (!sent) {
+      throw new Error("Input was not sent. Wait for any pending input to finish, then retry in an active session.");
+    }
   }, [sendMemberInput]);
 
   const handleInputChange = React.useCallback(

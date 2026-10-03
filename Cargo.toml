@@ -6,6 +6,7 @@ members = [
     "crates/agenthub-acp-adapter",
     "crates/agenthub-acp-core",
     "crates/agenthub-acp",
+    "crates/agenthub-rara",
     "crates/agenthub-mcp",
     "crates/agenthub-managed-skills",
     "crates/agenthub-internal-p2p",
@@ -103,6 +104,7 @@ zstd = "0.13"
 openssl = { version = "0.10", features = ["vendored"], optional = true }
 agenthub-acp = { path = "crates/agenthub-acp" }
 agenthub-acp-core = { path = "crates/agenthub-acp-core" }
+agenthub-rara = { path = "crates/agenthub-rara" }
 agenthub-managed-skills = { path = "crates/agenthub-managed-skills" }
 agenthub-internal-p2p = { path = "crates/agenthub-internal-p2p" }
 agenthub-text = { path = "crates/agenthub-text" }

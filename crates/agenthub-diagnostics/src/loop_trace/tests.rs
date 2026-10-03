@@ -14,6 +14,8 @@ use crate::agent_trace::{
     collect_from_pool, render_human,
 };
 
+mod native;
+
 struct Fixture {
     directory: PathBuf,
     pool: SqlitePool,
@@ -203,6 +205,7 @@ async fn activation_trace_never_falls_back_to_unrelated_session_evidence() {
         .await
         .unwrap();
     assert!(pending.session.is_none());
+    assert!(pending.activation.as_ref().unwrap().runtime.is_none());
     assert!(pending.events.event_db_exists);
     assert!(pending.events.recent.is_empty());
     assert_eq!(pending.permissions.pending_count, 0);
@@ -223,6 +226,7 @@ async fn activation_trace_never_falls_back_to_unrelated_session_evidence() {
         "session"
     );
     assert_eq!(historical.permissions.pending_count, 0);
+    assert!(historical.activation.as_ref().unwrap().runtime.is_none());
     assert!(
         !serde_json::to_string(&historical)
             .unwrap()

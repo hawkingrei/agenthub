@@ -70,7 +70,19 @@ impl AgentManager {
             blockers.push("unique_team_membership_required");
         }
         let provider = self.acp_provider_spec_for_agent(&agent.command, &agent.args);
-        if provider.is_none() {
+        let native = agent.command == "rara";
+        let native_config = if native {
+            match self.rara_launch_configuration(&agent, None) {
+                Ok(config) => config,
+                Err(_) => {
+                    blockers.push("native_launch_configuration_invalid");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        if provider.is_none() && !native {
             blockers.push("local_acp_provider_required");
         }
         if self.loop_control_endpoint.read().await.is_none() {
@@ -109,19 +121,35 @@ impl AgentManager {
                 blockers.push("workspace_policy_invalid");
             }
         }
-        let (command, _) = self.resolve_launch_command(&agent.command, &agent.args, provider);
+        let command = native_config
+            .as_ref()
+            .map(|config| config.binary.clone())
+            .unwrap_or_else(|| {
+                self.resolve_launch_command(&agent.command, &agent.args, provider)
+                    .0
+            });
         if executable_path(&command, Path::new(&workdir)).is_none() {
             blockers.push("provider_binary_unavailable");
         }
         if (agent.runtime_model.is_some() || agent.thinking_level.is_some())
+            && !native
             && !provider.is_some_and(|provider| matches!(provider.id, "codex" | "claude"))
         {
             blockers.push("runtime_profile_unsupported");
         }
-        if session_policy == LoopSessionPolicy::Resume {
+        if native {
+            if session_policy == LoopSessionPolicy::Resume {
+                blockers.push("native_resume_unsupported");
+            }
+            warnings.push("native_sources_negotiated_before_entry");
+            warnings.push("native_permissions_require_live_runtime");
+        } else if session_policy == LoopSessionPolicy::Resume {
             warnings.push("resume_capability_is_negotiated_before_entry");
         }
         if crate::mcp_proxy::configured::has_mem_binding(&self.loop_app_config, team_id) {
+            if native {
+                blockers.push("native_mcp_sources_unsupported");
+            }
             if crate::mcp_proxy::configured::validate_mem_configuration(
                 &self.loop_app_config,
                 team_id,
@@ -156,7 +184,12 @@ impl AgentManager {
             {
                 blockers.push("app_proxy_unavailable");
             }
-            Ok(true) => capabilities.push("app_tools"),
+            Ok(true) => {
+                capabilities.push("app_tools");
+                if native {
+                    blockers.push("native_mcp_sources_unsupported");
+                }
+            }
             Ok(false) => {}
             Err(_) => blockers.push("app_binding_unavailable"),
         }
@@ -201,7 +234,11 @@ impl AgentManager {
         blockers.dedup();
         Ok(LoopPreflight {
             ready: blockers.is_empty(),
-            provider_id: provider.map(|provider| provider.id.into()),
+            provider_id: if native {
+                Some("rara".into())
+            } else {
+                provider.map(|provider| provider.id.into())
+            },
             capabilities,
             blockers,
             warnings,

@@ -270,6 +270,7 @@ vi.mock("./team/TeamWorkbenchContainer", async () => {
       teamMemberAcpPanelPropsSpy({
         selectedMemberId: workbench.header.selectedAgentWorkspaceMemberId,
         selectedSessionId: workbench.memberConsole.selectedAgentWorkspaceSessionId,
+        onSendInput: workbench.memberAcp.onSendAgentAcpInput,
       });
       return (
         <div>
@@ -397,7 +398,7 @@ describe("TeamPage agent loop profile flow", () => {
     throw new Error(message);
   }
 
-  function TestTeamPageRouter() {
+  function TestTeamPageRouter({ token = "token" }: { token?: string }) {
     const [routeLocation, setRouteLocation] = React.useState(() => ({
       pathname: window.location.pathname,
       search: window.location.search,
@@ -419,12 +420,12 @@ describe("TeamPage agent loop profile flow", () => {
       <MantineProvider>
         <TeamPage
           auth={{
-            token: "token",
+            token,
             userId: "user-1",
             username: "root",
             role: "root",
           }}
-          token="token"
+          token={token}
           onLogout={() => {}}
           developerMode={false}
           routePathname={routeLocation.pathname}
@@ -458,6 +459,53 @@ describe("TeamPage agent loop profile flow", () => {
 
   afterEach(() => {
     document.body.innerHTML = "";
+  });
+
+  it.each(["token", "agent", "text", "session"])("rejects a targeted answer when %s is unavailable and permits explicit retry", async missing => {
+    const target = { runtime_id: "runtime", session_id: "native", turn_id: "waiting" };
+    teamPageFixture.teams = [{
+      id: "team-1", name: "Team One", description: "Mission", created_at: 1, updated_at: 1,
+      spec: {
+        spec_version: 1, coordinator_member_id: "worker-1", entrypoint: "plan", steps: [],
+        members: [{ member_id: "worker-1", role: "coordinator", skills: [] }],
+      },
+    }];
+    getTeamSharedThread.mockResolvedValue(null);
+    getTeamRuntime.mockResolvedValue({ team_id: "team-1", team_name: "Team One", status: "stopped", members: [] });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const callback = () => teamMemberAcpPanelPropsSpy.mock.calls[teamMemberAcpPanelPropsSpy.mock.calls.length - 1]?.[0].onSendInput as
+      (text: string, sessionId: string, inputTarget?: typeof target) => Promise<void>;
+    try {
+      window.history.pushState({}, "", missing === "agent"
+        ? buildTeamDetailPath("team-1")
+        : buildTeamMemberWorkspacePath("team-1", "worker-1", "agent_acp"));
+      await act(async () => {
+        root.render(<TestTeamPageRouter key="unavailable" token={missing === "token" ? "" : "token"} />);
+        await flushEffects();
+      });
+      await waitForElement(() => callback() ?? null, "member input callback missing");
+      await act(async () => {
+        await expect(callback()(missing === "text" ? " " : "Staging", missing === "session" ? "" : "local", target))
+          .rejects.toThrow("not sent");
+        await expect(callback()(missing === "text" ? " " : "Staging", missing === "session" ? "" : "local"))
+          .resolves.toBeUndefined();
+      });
+      expect(sendInput).not.toHaveBeenCalled();
+      window.history.pushState({}, "", buildTeamMemberWorkspacePath("team-1", "worker-1", "agent_acp"));
+      await act(async () => {
+        root.render(<TestTeamPageRouter key="available" />);
+        await flushEffects();
+      });
+      expect(sendInput).not.toHaveBeenCalled();
+      await act(async () => callback()("Staging", "local", target));
+      expect(sendInput).toHaveBeenCalledTimes(1);
+      expect(sendInput).toHaveBeenCalledWith("token", "worker-1", "Staging", expect.any(String), "local", [], target);
+    } finally {
+      await act(async () => { root.unmount(); await flushEffects(); });
+      container.remove();
+    }
   });
 
   it("keeps profile save successful when agent loop update fails afterwards", async () => {

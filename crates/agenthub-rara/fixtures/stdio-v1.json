@@ -1,0 +1,155 @@
+{
+  "upstream_commit": "6f489462251b73e1695bb22a59d2ece59ba26a21",
+  "binary_sha256": "08f6e9b90704b60491efd6115acee7bd7a6c8c5a27cf80c2ee12f51002f190b4",
+  "frames": [
+    {
+      "type": "handshake",
+      "payload": {
+        "protocol_version": 1,
+        "runtime_version": "0.0.22",
+        "runtime_id": "runtime-fixture",
+        "transport": "stdio-jsonl",
+        "request_families": [
+          "session",
+          "input",
+          "prompt_source",
+          "skill_source",
+          "output",
+          "server"
+        ],
+        "request_methods": [
+          "session.create",
+          "session.query_state",
+          "session.cancel",
+          "session.interrupt",
+          "input.submit_prompt",
+          "input.submit_follow_up",
+          "input.answer_user",
+          "input.answer_plan",
+          "input.answer_shell",
+          "prompt_source.register",
+          "prompt_source.unregister",
+          "prompt_source.query",
+          "skill_source.register",
+          "skill_source.disable",
+          "skill_source.query",
+          "output.replay",
+          "server.shutdown"
+        ],
+        "event_families": [
+          "session",
+          "input",
+          "assistant",
+          "tool",
+          "approval",
+          "plan",
+          "prompt_source",
+          "skill",
+          "mcp",
+          "memory",
+          "hook",
+          "context",
+          "extension",
+          "todo",
+          "warning",
+          "error"
+        ],
+        "capabilities": {
+          "graceful_shutdown": true,
+          "approval_persistence": false,
+          "replay": {
+            "lifetime": "runtime",
+            "max_events_per_session": 256
+          },
+          "request_receipts": {
+            "lifetime": "runtime",
+            "max_requests": 1024
+          }
+        },
+        "provider": "openai-compatible",
+        "model": "fixture-model"
+      }
+    },
+    {
+      "type": "ack",
+      "payload": {
+        "runtime_id": "runtime-fixture",
+        "request_id": "create",
+        "result": {
+          "status": "accepted",
+          "session_id": "session-fixture",
+          "turn_id": null,
+          "last_sequence": 1
+        }
+      }
+    },
+    {
+      "type": "event",
+      "payload": {
+        "runtime_id": "runtime-fixture",
+        "session_id": "session-fixture",
+        "event": {
+          "event_id": "ctl-0000000000000001",
+          "provenance": {
+            "controller": "runtime",
+            "adapter": null,
+            "session_id": null,
+            "source_id": null,
+            "trust": "trusted",
+            "authorship": "runtime"
+          },
+          "sequence": 1,
+          "event": {
+            "type": "extension",
+            "payload": {
+              "type": "readiness_updated",
+              "payload": {
+                "snapshot": {
+                  "plugin_count": 0,
+                  "hook_count": 0,
+                  "skill_count": 0,
+                  "command_count": 0,
+                  "agent_count": 0,
+                  "mcp_server_count": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "ack",
+      "payload": {
+        "runtime_id": "runtime-fixture",
+        "request_id": "create",
+        "result": {
+          "status": "accepted",
+          "session_id": "session-fixture",
+          "turn_id": null,
+          "last_sequence": 1
+        }
+      }
+    },
+    {
+      "type": "ack",
+      "payload": {
+        "runtime_id": "runtime-fixture",
+        "request_id": "shutdown",
+        "result": {
+          "status": "accepted",
+          "session_id": null,
+          "turn_id": null,
+          "last_sequence": null
+        }
+      }
+    },
+    {
+      "type": "shutdown_complete",
+      "payload": {
+        "runtime_id": "runtime-fixture",
+        "request_id": "shutdown"
+      }
+    }
+  ]
+}

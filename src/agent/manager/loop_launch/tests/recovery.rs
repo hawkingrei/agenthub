@@ -9,10 +9,70 @@ async fn loop_recovery_replacement_manager_waits_for_guardian_cleanup() {
     let store = LoopStore::new(fixture.state.db.clone());
     let now = Utc::now().timestamp();
     // The replacement manager has no old process handle or in-memory reservation.
-    let reservation = store
-        .reserve_manual(&fixture.team_id, "worker", "previous-daemon", now)
+    let trigger = store
+        .accept_trigger(
+            &LoopTriggerInput {
+                actor_id: "worker".into(),
+                team_id: fixture.team_id.clone(),
+                kind: LoopTriggerKind::Operator,
+                source_key: "crashed-native-session".into(),
+                due_at: None,
+                references: LoopSourceReferences::default(),
+            },
+            now,
+        )
         .await
         .unwrap();
+    let LoopAdmission::Admitted(reservation) = store
+        .admit(
+            &fixture.team_id,
+            &trigger.activation_id,
+            "previous-daemon",
+            now,
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("admit old activation");
+    };
+    sqlx::query("INSERT INTO agent_sessions (id, agent_id, status, started_at) VALUES ('old-native-local', 'worker', 'running', ?)")
+        .bind(now).execute(&fixture.state.db).await.unwrap();
+    let reservation = store
+        .bind_session(&reservation, "old-native-local", now)
+        .await
+        .unwrap();
+    store.mark_running(&reservation, now).await.unwrap();
+    let event_pool = fixture
+        .state
+        .agents
+        .event_dbs
+        .pool_for_agent("worker")
+        .await
+        .unwrap();
+    use agenthub_db::runtime_events::{
+        RuntimeEventStore, RuntimeRequestIntent, RuntimeRequestKind, RuntimeRequestStatus,
+    };
+    let transport = RuntimeEventStore::bind(event_pool, "old-native-local", "old-runtime")
+        .await
+        .unwrap();
+    transport.bind_stream("old-native").await.unwrap();
+    for id in ["prepared", "sent"] {
+        transport
+            .prepare_request(
+                RuntimeRequestIntent {
+                    request_id: id,
+                    kind: RuntimeRequestKind::Prompt,
+                    target_session_id: Some("old-native"),
+                    expected_turn_id: None,
+                },
+                now,
+            )
+            .await
+            .unwrap();
+        if id == "sent" {
+            transport.mark_request_sent(id, now).await.unwrap();
+        }
+    }
     let base = fixture.state.agents.event_dbs.base_dir();
     let witness = Arc::new(CleanupWitness::prepare(base, &reservation).unwrap());
     store
@@ -56,12 +116,63 @@ async fn loop_recovery_replacement_manager_waits_for_guardian_cleanup() {
             .await
             .is_err()
     );
+    let mut daemon = crate::daemon_instance::DaemonInstanceGuard::acquire(
+        &fixture.directory.join("replacement.db"),
+        "main",
+    )
+    .unwrap();
+    daemon.claim_generation(&fixture.state.db).await.unwrap();
+    fixture.state.agents.mark_exited_on_startup().await.unwrap();
+    let before = store
+        .activation(&fixture.team_id, &trigger.activation_id)
+        .await
+        .unwrap();
+    for _ in 0..2 {
+        fixture
+            .state
+            .agents
+            .recover_runtime_receipts_on_startup(&daemon)
+            .await
+            .unwrap();
+    }
+    let history = transport.history(100, None).await.unwrap();
+    let session: (String, Option<i64>) =
+        sqlx::query_as("SELECT status, ended_at FROM agent_sessions WHERE id = 'old-native-local'")
+            .fetch_one(&fixture.state.db)
+            .await
+            .unwrap();
+    let retained = store.reservation(&fixture.team_id, "worker").await.unwrap();
+    let after = store
+        .activation(&fixture.team_id, &trigger.activation_id)
+        .await
+        .unwrap();
+    let replacement_blocked = store
+        .reserve_manual(&fixture.team_id, "worker", "replacement", now)
+        .await
+        .is_err();
     let mut raw = child.into_inner();
     tokio::time::timeout(Duration::from_secs(5), raw.wait())
         .await
         .unwrap()
         .unwrap();
     assert!(!descendant.exists());
+    assert!(
+        history.closed,
+        "reserved sessions must retire their old transport"
+    );
+    assert_eq!(
+        history.receipts[0].status,
+        RuntimeRequestStatus::OutcomeUnknown
+    );
+    assert_eq!(history.receipts[1].status, RuntimeRequestStatus::NotSent);
+    assert_eq!(session, ("running".into(), None));
+    assert_eq!(
+        serde_json::to_value(before).unwrap(),
+        serde_json::to_value(after).unwrap()
+    );
+    assert_eq!(retained.unwrap().generation, reservation.generation);
+    assert!(replacement_blocked);
+    drop(daemon);
     assert_eq!(
         fixture
             .state

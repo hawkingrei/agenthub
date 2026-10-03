@@ -1,3 +1,4 @@
+import type { NativeInputTarget, SubmitRequestUserInput } from "../native_input";
 import React from "react";
 import {
   REQUEST_USER_INPUT_OTHER_OPTION_LABEL,
@@ -16,12 +17,14 @@ export const RequestUserInputCard = React.memo(function RequestUserInputCard({
   toolCallId,
   questions,
   canSubmit,
+  nativeInputTarget,
   onSubmitRequestUserInput,
 }: {
   toolCallId: string;
   questions: RequestUserInputQuestion[];
   canSubmit: boolean;
-  onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
+  nativeInputTarget?: NativeInputTarget;
+  onSubmitRequestUserInput?: SubmitRequestUserInput;
 }) {
   const [drafts, setDrafts] = React.useState<RequestUserInputDrafts>(() =>
     createInitialRequestUserInputDrafts(questions)
@@ -84,13 +87,17 @@ export const RequestUserInputCard = React.memo(function RequestUserInputCard({
     try {
       setSubmitting(true);
       setErrorText(null);
-      await onSubmitRequestUserInput(submission.text);
+      if (nativeInputTarget) {
+        await onSubmitRequestUserInput(submission.text, nativeInputTarget);
+      } else {
+        await onSubmitRequestUserInput(submission.text);
+      }
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : String(error));
     } finally {
       setSubmitting(false);
     }
-  }, [drafts, onSubmitRequestUserInput, questions]);
+  }, [drafts, nativeInputTarget, onSubmitRequestUserInput, questions]);
 
   return (
     <div className="mx-0 mb-3 mt-2 rounded-xl border border-notion-border bg-notion-sidebar/30 p-4 shadow-sm">
@@ -237,7 +244,7 @@ export const RequestUserInputCard = React.memo(function RequestUserInputCard({
       ) : null}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-sm text-[11px] italic leading-relaxed text-notion-text-muted">
-          Response will be sent through the active turn.
+          {nativeInputTarget ? "Response will answer this question only." : "Response will be sent through the active turn."}
         </p>
         <ActionButton
           tone="primary"

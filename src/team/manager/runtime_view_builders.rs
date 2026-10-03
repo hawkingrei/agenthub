@@ -3,9 +3,30 @@ use serde_json::Value;
 use super::runtime_view_loaders::AgentRuntimeRow;
 use super::runtime_views::TeamMemberSpecView;
 use super::{
-    TeamMemberCardRecord, TeamRunMemberRecord, TeamRuntimeMemberRecord, TeamRuntimeRecord,
-    TeamRuntimeSummaryRecord,
+    TeamManager, TeamMemberCardRecord, TeamRunMemberRecord, TeamRuntimeMemberRecord,
+    TeamRuntimeRecord, TeamRuntimeSummaryRecord,
 };
+
+impl TeamManager {
+    /// Use the same Card builder as discovery, with the configuration already pinned for launch.
+    pub(crate) fn member_card_for_launch(
+        spec: &Value,
+        agent: &crate::agent::AgentRecord,
+    ) -> anyhow::Result<TeamMemberCardRecord> {
+        let member = parse_team_member_specs(spec)?
+            .into_iter()
+            .find(|member| member.member_id == agent.id)
+            .ok_or_else(|| anyhow::anyhow!("loop member Card is unavailable"))?;
+        let worktree_mode = serde_json::to_value(&agent.worktree_mode)?;
+        let runtime = AgentRuntimeRow {
+            name: agent.name.clone(),
+            status: None,
+            code_mode: agent.code_mode,
+            worktree_mode: worktree_mode.as_str().map(str::to_owned),
+        };
+        Ok(build_team_member_card(&member, Some(&runtime), &agent.name))
+    }
+}
 
 pub(super) fn parse_team_member_specs(spec: &Value) -> anyhow::Result<Vec<TeamMemberSpecView>> {
     let members = spec
