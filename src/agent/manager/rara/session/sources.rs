@@ -25,6 +25,7 @@ impl RaraHandle {
         }
         let result = async {
             for source in sources {
+                let previous_sequence = *self.progress.borrow();
                 let ack = receipts::control(
                     &self.tasks,
                     &self.client,
@@ -37,9 +38,9 @@ impl RaraHandle {
                     matches!(
                         ack,
                         RuntimeRequestAck::Accepted {
-                            last_sequence: Some(_),
+                            last_sequence: Some(sequence),
                             ..
-                        }
+                        } if sequence > previous_sequence
                     ),
                     "direct runtime did not acknowledge a required loop source event prefix"
                 );

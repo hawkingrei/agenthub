@@ -46,6 +46,7 @@ pub struct RaraHandle {
 struct LiveState {
     phase: SessionPhase,
     pending: Option<PendingInput>,
+    answered_user_turn: Option<String>,
     sequence: u64,
     sources_registered: bool,
     terminal_turn: bool,
@@ -113,6 +114,7 @@ impl RaraHandle {
             state: Arc::new(RwLock::new(LiveState {
                 phase: SessionPhase::Idle,
                 pending: None,
+                answered_user_turn: None,
                 sequence: 0,
                 sources_registered: false,
                 terminal_turn: false,

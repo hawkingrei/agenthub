@@ -480,6 +480,10 @@ plan answer completes its interaction card without requiring a tool-result event
 Terminal or discarded turns fail unfinished tool cards and retire their identities;
 an old turn's cleanup cannot retire calls owned by its successor.
 Question cards carry runtime, native session and waiting turn for reply validation.
+An accepted user-answer ACK immediately fences another submission for that waiting turn,
+even when its event cursor is absent or already committed. Pending input and session phase
+still change only through committed events, so the ACK cannot admit ordinary work or clear
+a successor question. A rejected answer leaves the current question available for explicit retry.
 An approval notice alone never creates a live callback. Projection state is installed
 only after its event transaction commits; duplicates and failed transactions cannot
 advance chunk or tool state. Diagnostic/source events expose allowlisted identifiers,
@@ -600,9 +604,10 @@ projection state or resurrect a pending approval.
 An accepted ACK may precede delivery of its referenced events. Before choosing the next
 prompt/follow-up or turn control, the adapter waits for that cursor to commit, bounded by
 the replay timeout. This wait never advances event persistence from ACK metadata alone.
-Each required source registration must receive an accepted ACK with `last_sequence`
-before waiting for its durable prefix and sending the next source. An ACK without that
-cursor aborts bootstrap rather than allowing activation entry with an unproven source prefix.
+Each required source registration must receive an accepted ACK whose `last_sequence`
+is greater than the committed cursor observed before registration. The adapter waits for
+that prefix to commit before sending the next source. Missing, zero and stale cursors
+abort bootstrap, preventing activation entry with an unproven source prefix.
 
 Startup recovery runs under the daemon's exclusive instance lock before new work is admitted.
 It closes earlier local stdio ownership, settles prepared requests as `not_sent` and unresolved

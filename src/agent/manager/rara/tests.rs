@@ -11,6 +11,7 @@ mod history;
 mod input;
 mod native;
 mod permissions;
+mod questions;
 mod sources;
 
 const PEER: &str = r#"#!/usr/bin/env python3
@@ -89,10 +90,12 @@ for line in sys.stdin:
                 record.write(json.dumps(request) + '\n')
             if operation in ('register', 'register_skill'):
                 sequence += 1
+                source_cursor = {'source_missing_cursor': None, 'source_zero_cursor': 0,
+                    'source_stale_cursor': 1}.get(mode, sequence)
                 emit('ack', {'runtime_id': runtime, 'request_id': envelope['request_id'],
                     'result': {'status': 'accepted', 'session_id': native, 'turn_id': None,
-                        'last_sequence': None if mode == 'source_missing_cursor' else sequence}})
-                if mode == 'source_missing_cursor':
+                        'last_sequence': source_cursor}})
+                if mode in ('source_missing_cursor', 'source_zero_cursor', 'source_stale_cursor'):
                     continue
                 if inputs == 1:
                     (root / 'source-ack').write_text('accepted')
@@ -137,9 +140,26 @@ for line in sys.stdin:
                 result = {'status': 'queued', 'session_id': native}
             else:
                 result = {'status': 'accepted', 'session_id': native, 'turn_id': 'turn-' + str(inputs), 'last_sequence': sequence}
+            question_answer = mode.startswith('input_question_') and operation == 'answer_pending_input'
+            if question_answer:
+                result['last_sequence'] = {'input_question_no_cursor': None,
+                    'input_question_zero_cursor': 0}.get(mode, sequence)
+                if mode == 'input_question_reject_once' and inputs == 2:
+                    result = {'status': 'rejected', 'code': 'busy', 'message': 'Try again explicitly'}
             if mode == 'ack_before_events' and operation == 'submit_user_prompt':
                 result['last_sequence'] = sequence + 1
             emit('ack', {'runtime_id': runtime, 'request_id': envelope['request_id'], 'result': result})
+            if question_answer and result['status'] == 'accepted':
+                if mode != 'input_question_reject_once':
+                    deadline = time.monotonic() + 10
+                    while not (root / 'release-question-events').exists():
+                        assert time.monotonic() < deadline
+                        time.sleep(0.01)
+                sequence += 1
+                emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+                    'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-' + str(inputs),
+                    'provenance': {'session_id': None}, 'event': {'type': 'input', 'payload': {
+                        'type': 'answered', 'payload': {'waiting_turn': request['payload']['expected_turn_id']}}}}})
             if mode == 'ack_before_events' and operation == 'submit_user_prompt':
                 while not (root / 'release-events').exists():
                     time.sleep(0.01)
@@ -153,7 +173,7 @@ for line in sys.stdin:
                 emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
                     'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-' + str(inputs),
                     'provenance': {'session_id': None}, 'event': {'type': 'session', 'payload': {'type': 'turn_started'}}}})
-                if mode == 'input_question':
+                if mode.startswith('input_question'):
                     sequence += 1
                     emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
                         'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-' + str(inputs),

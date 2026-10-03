@@ -429,3 +429,34 @@ cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tes
 cargo clippy --locked --offline -p agenthub -p agenthub-db --lib --tests -- -D warnings
 cargo fmt --all --check
 ```
+
+## Answer Admission And Advancing Source Cursors (2026-10-03)
+
+An accepted user-answer ACK can omit its event cursor or point to an already committed
+prefix. Waiting only on that cursor left the same question open to another dispatch with
+a new request ID. The input gate now records the accepted waiting-turn identity before
+returning. A second answer to that turn fails before receipt preparation or provider dispatch.
+This bounded marker does not advance the event cursor, clear pending state, admit ordinary
+input, or retire a successor question. Rejected answers remain available for explicit retry.
+
+Source registration now requires its ACK cursor to advance beyond the committed cursor
+observed before dispatch. Missing, zero and stale cursors abort bootstrap before a second
+source is prepared or sent. Successful registration still waits for its event prefix to commit.
+
+Before the fix, the duplicate-answer regression returned success and both zero/stale source
+regressions allowed the batch to continue. The delayed-event answer cases cover absent, zero
+and old cursors, unchanged committed history, ordinary-input rejection, no duplicate ledger
+entry or wire control, and a subsequent question that can still be answered. A separate case
+covers a rejected answer followed by an explicit retry.
+
+All 44 focused cases pass: 37 runtime adapter tests (two real-provider opt-in cases ignored)
+and seven native activation/API tests. Root library/test Clippy with warnings denied,
+workspace formatting, diff checks and nine local documentation links pass. Deferred
+real-provider acceptance was not repeated.
+
+```bash
+cargo test --locked --offline -p agenthub --lib agent::manager::rara:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tests::native:: -- --test-threads=1
+cargo clippy --locked --offline -p agenthub --lib --tests -- -D warnings
+cargo fmt --all --check
+```

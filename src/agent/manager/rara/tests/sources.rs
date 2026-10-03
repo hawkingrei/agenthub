@@ -13,7 +13,21 @@ async fn source_attempts(pool: &sqlx::SqlitePool) -> i64 {
 
 #[tokio::test]
 async fn source_registration_without_ack_cursor_aborts_before_next_source() {
-    let fixture = Fixture::new("source_missing_cursor").await;
+    assert_invalid_source_cursor("source_missing_cursor").await;
+}
+
+#[tokio::test]
+async fn source_registration_with_zero_ack_cursor_aborts_before_next_source() {
+    assert_invalid_source_cursor("source_zero_cursor").await;
+}
+
+#[tokio::test]
+async fn source_registration_with_stale_ack_cursor_aborts_before_next_source() {
+    assert_invalid_source_cursor("source_stale_cursor").await;
+}
+
+async fn assert_invalid_source_cursor(scenario: &str) {
+    let fixture = Fixture::new(scenario).await;
     fixture
         .manager
         .start_agent(&fixture.agent_id)

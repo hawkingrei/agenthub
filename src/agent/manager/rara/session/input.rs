@@ -57,6 +57,7 @@ impl RaraHandle {
                         target.runtime_id == self.store.runtime_id()
                             && target.session_id == self.stream.native_session_id()
                             && target.turn_id == pending.turn_id
+                            && state.answered_user_turn.as_deref() != Some(&target.turn_id)
                             && matches!(pending.kind, PendingInputKind::User { .. }),
                         AgentSendInputError::NativeInputMismatch
                     );
@@ -155,6 +156,15 @@ impl RaraHandle {
         };
         if let Ok(ack) = &result {
             self.record_ack_cursor(ack);
+            if let (
+                RuntimeRequestAck::Accepted { .. },
+                ControlRequest::UserAnswer { turn_id, .. },
+            ) = (ack, &request)
+            {
+                // ACK cursors are optional. Fence another answer without advancing pending state
+                // or clearing a successor question whose events arrived before this ACK.
+                self.state.write().await.answered_user_turn = Some(turn_id.clone());
+            }
         }
         if let Some(receipt) = self.store.request_receipt(&id).await? {
             self.emit_history(
