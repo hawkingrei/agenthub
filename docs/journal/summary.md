@@ -29,6 +29,8 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-10-03: Mailbox ACK writer contention](2026-10-03-mailbox-ack-writer-contention.md): acquire write ownership before the ACK read snapshot and retain idempotency under concurrent WAL writers.
+
 - [2026-09-27: Revoked execution sources](2026-09-27-loop-revoked-execution-sources.md): exclude revoked sources from live execution pages and exact-source reads while preserving history and stable pagination.
 
 - [2026-09-21: ACP rollout integration](2026-09-21-acp-rollout-integration.md): PR #1169 merged the ACP slices, verified restart recovery, installed-adapter acceptance and operator guidance after applicable CI passed. Native support remains deferred.

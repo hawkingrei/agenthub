@@ -425,6 +425,107 @@ async fn actor_messages_detect_pending_payload_type_by_actor_inbox() {
 }
 
 #[tokio::test]
+async fn actor_ack_waits_for_concurrent_writers_and_preserves_the_first_delivery() {
+    let directory = std::env::temp_dir().join(format!("agenthub-ack-race-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).expect("create database directory");
+    let path = directory.join("mailbox.db");
+    agenthub_db::init_db_at_path(&path)
+        .await
+        .expect("migrate database")
+        .close()
+        .await;
+    let db = SqlitePoolOptions::new()
+        .min_connections(2)
+        .max_connections(2)
+        .connect_with(
+            SqliteConnectOptions::new()
+                .filename(path)
+                .foreign_keys(true)
+                .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+                .busy_timeout(Duration::from_secs(5)),
+        )
+        .await
+        .expect("open concurrent database connections");
+    let manager = TeamManager::new(db.clone());
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "concurrent-ack-team".into(),
+            description: None,
+            spec: json!({
+                "entrypoint": "planner",
+                "members": [{"member_id": "planner"}, {"member_id": "reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("concurrent-ack"), json!({}))
+        .await
+        .expect("create run");
+
+    for competing_ack in [false, true] {
+        let sent = manager
+            .send_actor_message(SendActorMessageInput {
+                run_id: &run.id,
+                from_actor_id: "planner",
+                from_peer_id: ACTOR_MAIN_PEER_ID,
+                to_actor_id: "reviewer",
+                to_peer_id: ACTOR_MAIN_PEER_ID,
+                channel: "coordination",
+                transport: TeamActorMessageTransport::Local,
+                route: None,
+                payload: json!({"text": "Review the assigned task"}),
+                idempotency_key: None,
+                message_kind: None,
+            })
+            .await
+            .expect("send message");
+        let mut writer = db.begin_with("BEGIN IMMEDIATE").await.expect("hold writer");
+        let first_delivered_at = sent.created_at + 1;
+        if competing_ack {
+            sqlx::query("UPDATE team_actor_messages SET status = 'delivered', delivered_at = ? WHERE id = ?")
+                .bind(first_delivered_at)
+                .bind(sent.message_id)
+                .execute(&mut *writer)
+                .await
+                .expect("stage competing delivery");
+        }
+
+        let ack = manager.ack_actor_message(&run.id, "reviewer", sent.message_id);
+        tokio::pin!(ack);
+        // WAL permits a deferred reader to reach its failing write-lock upgrade here.
+        let early = timeout(Duration::from_millis(200), &mut ack).await;
+        writer.commit().await.expect("release competing writer");
+        let result = match early {
+            Ok(result) => result,
+            Err(_) => timeout(Duration::from_secs(5), &mut ack)
+                .await
+                .expect("ack finishes after writer commits"),
+        };
+        let acknowledged = result.expect("ack waits for the writer without a lock-upgrade error");
+        assert_eq!(acknowledged.status_changed, !competing_ack);
+        assert_eq!(
+            acknowledged.message.status,
+            TeamActorMessageStatus::Delivered
+        );
+        if competing_ack {
+            assert_eq!(acknowledged.message.delivered_at, Some(first_delivered_at));
+        }
+        let duplicate = manager
+            .ack_actor_message(&run.id, "reviewer", sent.message_id)
+            .await
+            .expect("duplicate ack");
+        assert!(!duplicate.status_changed);
+        assert_eq!(
+            duplicate.message.delivered_at,
+            acknowledged.message.delivered_at
+        );
+    }
+    db.close().await;
+    std::fs::remove_dir_all(directory).expect("remove database directory");
+}
+
+#[tokio::test]
 async fn actor_ack_reports_noop_when_message_is_already_delivered() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db);
