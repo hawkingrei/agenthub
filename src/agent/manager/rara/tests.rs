@@ -90,7 +90,10 @@ for line in sys.stdin:
             if operation in ('register', 'register_skill'):
                 sequence += 1
                 emit('ack', {'runtime_id': runtime, 'request_id': envelope['request_id'],
-                    'result': {'status': 'accepted', 'session_id': native, 'turn_id': None, 'last_sequence': sequence}})
+                    'result': {'status': 'accepted', 'session_id': native, 'turn_id': None,
+                        'last_sequence': None if mode == 'source_missing_cursor' else sequence}})
+                if mode == 'source_missing_cursor':
+                    continue
                 if inputs == 1:
                     (root / 'source-ack').write_text('accepted')
                     deadline = time.monotonic() + 10

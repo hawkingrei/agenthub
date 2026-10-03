@@ -447,14 +447,16 @@ async fn invalid_sequence_identity_and_projection_are_rejected_before_storage() 
     ] {
         assert!(fixture.stream.persist(invalid, &[]).await.is_err());
     }
-    let too_many: Vec<_> = (0..17).map(|_| history("projection")).collect();
-    assert!(
-        fixture
-            .stream
-            .persist(event("first", 1), &too_many)
-            .await
-            .is_err()
-    );
+    let too_many: Vec<_> = (0..515).map(|_| history("projection")).collect();
+    let error = fixture
+        .stream
+        .persist(event("first", 1), &too_many)
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<RuntimeEventError>(),
+        Some(RuntimeEventError::ProjectionLimit)
+    ));
     let oversized = vec![0; 2 * 1024 * 1024 + 1];
     assert!(
         fixture

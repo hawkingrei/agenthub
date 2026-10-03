@@ -34,8 +34,14 @@ impl RaraHandle {
                 )
                 .await?;
                 anyhow::ensure!(
-                    matches!(ack, RuntimeRequestAck::Accepted { .. }),
-                    "direct runtime rejected a required loop source"
+                    matches!(
+                        ack,
+                        RuntimeRequestAck::Accepted {
+                            last_sequence: Some(_),
+                            ..
+                        }
+                    ),
+                    "direct runtime did not acknowledge a required loop source event prefix"
                 );
                 self.record_ack_cursor(&ack);
                 self.await_admitted_events().await?;

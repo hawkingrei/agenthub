@@ -156,6 +156,105 @@ async fn reorder_capacity_is_bounded_without_advancing_past_missing_history() {
     assert!(fixture.consumer.commit_next().await.unwrap().is_none());
     assert_eq!(fixture.stream.cursor().await.unwrap().sequence, 0);
     assert_eq!(fixture.count().await, 0);
+    fixture.consumer.enqueue(frame(1, "missing")).await.unwrap();
+    while fixture.consumer.commit_next().await.unwrap().is_some() {}
+    assert_eq!(fixture.consumer.sequence(), MAX_REORDER_EVENTS as u64 + 1);
+    assert_eq!(fixture.count().await, MAX_REORDER_EVENTS as i64 + 1);
+    assert_eq!(fixture.consumer.waiting_bytes, 0);
+}
+
+#[tokio::test]
+async fn missing_event_drains_a_byte_full_buffer_but_still_obeys_frame_limit() {
+    let mut fixture = Fixture::new().await;
+    let payload = "x".repeat(agenthub_rara::MAX_FRAME_BYTES / 2);
+    let mut next = 2;
+    loop {
+        let event = frame(next, &payload);
+        if fixture.consumer.waiting_bytes + serde_json::to_vec(&event).unwrap().len()
+            > MAX_REORDER_BYTES
+        {
+            assert!(fixture.consumer.enqueue(event).await.is_err());
+            break;
+        }
+        fixture.consumer.enqueue(event).await.unwrap();
+        next += 1;
+    }
+    assert!(fixture.consumer.waiting.len() < MAX_REORDER_EVENTS);
+    let oversized = "x".repeat(agenthub_rara::MAX_FRAME_BYTES);
+    assert!(
+        fixture
+            .consumer
+            .enqueue(frame(1, &oversized))
+            .await
+            .is_err()
+    );
+    assert_eq!(fixture.consumer.sequence(), 0);
+    fixture.consumer.enqueue(frame(1, &payload)).await.unwrap();
+    while fixture.consumer.commit_next().await.unwrap().is_some() {}
+    assert_eq!(fixture.stream.cursor().await.unwrap().sequence, next - 1);
+    assert_eq!(fixture.count().await, next as i64 - 1);
+    assert_eq!(fixture.consumer.waiting_bytes, 0);
+}
+
+#[tokio::test]
+async fn terminal_events_atomically_retire_all_supported_open_tools() {
+    for (tool_count, kind) in [
+        (15, "turn_finished"),
+        (16, "turn_cancelled"),
+        (512, "turn_failed"),
+    ] {
+        let mut fixture = Fixture::new().await;
+        let mut ids = std::collections::BTreeSet::new();
+        for sequence in 1..=tool_count {
+            let mut event = frame(sequence, "");
+            event.event.event = json!({"type":"tool", "payload":{"type":"use", "payload":{
+                "call_id":format!("call-{sequence}"), "name":"fixture", "input":{}
+            }}});
+            fixture.consumer.enqueue(event).await.unwrap();
+            let committed = fixture.consumer.commit_next().await.unwrap().unwrap();
+            let value: Value = serde_json::from_str(&committed.output[0].message).unwrap();
+            ids.insert(value["id"].as_str().unwrap().to_owned());
+        }
+        let mut terminal = frame(tool_count + 1, "");
+        let payload = if kind == "turn_cancelled" {
+            Value::Null
+        } else {
+            json!({"reason":"done"})
+        };
+        terminal.event.event =
+            json!({"type":"session", "payload":{"type":kind, "payload":payload}});
+        fixture.consumer.enqueue(terminal.clone()).await.unwrap();
+        if kind == "turn_failed" {
+            sqlx::query("CREATE TRIGGER reject_terminal BEFORE INSERT ON agent_events WHEN NEW.stream = 'system' BEGIN SELECT RAISE(ABORT, 'fixture failure'); END")
+                .execute(&fixture.pool).await.unwrap();
+            assert!(fixture.consumer.commit_next().await.is_err());
+            assert_eq!(fixture.stream.cursor().await.unwrap().sequence, tool_count);
+            assert_eq!(fixture.count().await, tool_count as i64);
+            sqlx::query("DROP TRIGGER reject_terminal")
+                .execute(&fixture.pool)
+                .await
+                .unwrap();
+        }
+        let committed = fixture.consumer.commit_next().await.unwrap().unwrap();
+        let extra_rows = if kind == "turn_failed" { 2 } else { 1 };
+        assert_eq!(committed.output.len(), tool_count as usize + extra_rows);
+        for output in &committed.output[..tool_count as usize] {
+            let value: Value = serde_json::from_str(&output.message).unwrap();
+            assert_eq!(value["type"], "tool_call_update");
+            assert_eq!(value["status"], "failed");
+            assert!(ids.remove(value["id"].as_str().unwrap()));
+        }
+        assert!(ids.is_empty());
+        let count = fixture.count().await;
+        assert_eq!(count, 2 * tool_count as i64 + extra_rows as i64);
+        fixture.consumer.enqueue(terminal).await.unwrap();
+        assert!(fixture.consumer.commit_next().await.unwrap().is_none());
+        assert_eq!(fixture.count().await, count);
+        assert_eq!(
+            fixture.stream.cursor().await.unwrap().sequence,
+            tool_count + 1
+        );
+    }
 }
 
 #[tokio::test]

@@ -395,3 +395,37 @@ cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tes
 cargo clippy --locked --offline -p agenthub -p agenthub-db --lib --tests -- -D warnings
 cargo fmt --all --check
 ```
+
+## Event Bounds And Source Prefix Review (2026-10-03)
+
+Review found three failures at existing event-processing boundaries. Terminal projection can
+retire 512 open tools, but storage admitted only 16 history rows. The per-event row bound is now
+514, including the status and diagnostic rows of a failed turn. The 2 MiB encoded payload bound
+and single transaction for event identity, history and cursor are preserved.
+
+A required source ACK without `last_sequence` now aborts bootstrap before preparing or sending
+the next source. Successful registration still waits for each acknowledged prefix to commit.
+The consumer also admits the next contiguous frame when its reorder buffer is full; the extra
+frame keeps the 1 MiB frame cap, and other out-of-order events retain the 256-event/8 MiB limits.
+
+Four regression cases fail on the preceding implementation: missing-prefix recovery at count
+capacity, the same recovery at byte capacity, terminal projection with 16 unfinished tools,
+and source registration with an absent ACK cursor. The terminal regression also covers all
+512 supported tools, rollback after inserting the tool/status rows, retry and duplicate replay.
+The source regression verifies that only one control reaches both the durable ledger and wire.
+
+All 66 focused cases pass: 26 runtime storage, 33 runtime adapter (two opt-in real-provider
+cases ignored), and seven native activation/API tests. The final storage-limit assertion also
+passes independently and requires the specific projection-limit error. Root/database Clippy
+with warnings denied, workspace formatting, diff checks and nine local documentation links pass.
+These are fixture-based checks; the deferred real-provider acceptance scope is unchanged.
+
+Focused validation commands:
+
+```bash
+cargo test --locked --offline -p agenthub-db runtime_events:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::rara:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tests::native:: -- --test-threads=1
+cargo clippy --locked --offline -p agenthub -p agenthub-db --lib --tests -- -D warnings
+cargo fmt --all --check
+```

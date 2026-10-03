@@ -108,11 +108,17 @@ impl DurableEvents {
         }
         let size = serde_json::to_vec(&frame)?.len();
         anyhow::ensure!(
-            size <= agenthub_rara::MAX_FRAME_BYTES
-                && self.waiting.len() < MAX_REORDER_EVENTS
-                && self.waiting_bytes + size <= MAX_REORDER_BYTES,
-            "direct event reorder buffer is full"
+            size <= agenthub_rara::MAX_FRAME_BYTES,
+            "direct event exceeds the frame limit"
         );
+        // The contiguous frame must be admitted to drain a full reorder buffer.
+        if sequence != self.sequence + 1 {
+            anyhow::ensure!(
+                self.waiting.len() < MAX_REORDER_EVENTS
+                    && self.waiting_bytes + size <= MAX_REORDER_BYTES,
+                "direct event reorder buffer is full"
+            );
+        }
         self.waiting_bytes += size;
         self.waiting.insert(sequence, (frame, size));
         Ok(())

@@ -12,6 +12,54 @@ async fn source_attempts(pool: &sqlx::SqlitePool) -> i64 {
 }
 
 #[tokio::test]
+async fn source_registration_without_ack_cursor_aborts_before_next_source() {
+    let fixture = Fixture::new("source_missing_cursor").await;
+    fixture
+        .manager
+        .start_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    let runtime = fixture.runtime().await;
+    let result = runtime
+        .register_loop_sources(vec![
+            SourceRegistration::Prompt {
+                source_id: "role".into(),
+                content: "Review the task.".into(),
+            },
+            SourceRegistration::Skill {
+                source_id: "skills".into(),
+                name: "review".into(),
+                content: "Check the boundary.".into(),
+            },
+        ])
+        .await;
+    let pool = fixture
+        .manager
+        .event_dbs
+        .pool_for_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    let attempts = source_attempts(&pool).await;
+    let sent = std::fs::read_to_string(fixture.directory.join("requests.jsonl"))
+        .unwrap()
+        .lines()
+        .count();
+    // Clean up the old implementation as well, so a regression cannot leak a provider.
+    if result.is_ok() {
+        fixture.manager.stop_agent(&fixture.agent_id).await.unwrap();
+    } else {
+        fixture.assert_clean().await;
+    }
+    fixture.finish().await;
+    assert!(
+        result.is_err(),
+        "a source ACK must identify its committed prefix"
+    );
+    assert_eq!(attempts, 1);
+    assert_eq!(sent, 1);
+}
+
+#[tokio::test]
 async fn source_registration_waits_for_each_durable_ack_prefix() {
     for scenario in ["source_delayed", "source_gap"] {
         let fixture = Fixture::new(scenario).await;

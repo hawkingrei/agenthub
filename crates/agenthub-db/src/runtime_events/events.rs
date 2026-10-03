@@ -83,7 +83,8 @@ impl RuntimeEventStream {
         let event_sequence = sequence(event.sequence)?;
         anyhow::ensure!(event_sequence > 0, RuntimeEventError::InvalidSequence);
         anyhow::ensure!(
-            history.len() <= 16
+            // A terminal event can retire 512 open tools plus status and diagnostic rows.
+            history.len() <= 514
                 && history
                     .iter()
                     .map(|entry| entry.message.len())

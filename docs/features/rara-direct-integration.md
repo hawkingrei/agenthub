@@ -570,6 +570,9 @@ Replay contract:
 
 Event persistence commits the event identity/digest, zero or more normalized history
 rows, their native-event associations and the next contiguous cursor in one transaction.
+One projection permits at most 514 rows and 2 MiB of encoded history, covering all 512
+supported open-tool updates plus terminal status and diagnostic rows without splitting
+the event transaction.
 An identical replay emits no history rows. Reusing an ID or sequence with different
 content is an error. An out-of-order event returns the missing position without writing
 history or advancing the cursor; the adapter must bound its pending events and recover
@@ -584,8 +587,10 @@ ownership remain distinct; unsolicited events cannot allocate their own binding.
 Reopening this database for a live runtime is not evidence of cross-process native
 session resume or durable approval support.
 
-The managed consumer buffers at most 256 out-of-order events and 8 MiB. It requests
-replay from the committed contiguous cursor without blocking output consumption on
+The managed consumer buffers at most 256 out-of-order events and 8 MiB. The next
+contiguous event may enter a full buffer so it can drain; this extra frame still obeys
+the 1 MiB frame limit. It requests replay from the committed contiguous cursor without
+blocking output consumption on
 the ACK. A replay must finish within 30 seconds; absent replay support, overflow,
 identity conflicts and unavailable history fail visibly. Only persisted events update
 live phase/pending-input state and presentation state. The pinned stdio protocol does
@@ -595,6 +600,9 @@ projection state or resurrect a pending approval.
 An accepted ACK may precede delivery of its referenced events. Before choosing the next
 prompt/follow-up or turn control, the adapter waits for that cursor to commit, bounded by
 the replay timeout. This wait never advances event persistence from ACK metadata alone.
+Each required source registration must receive an accepted ACK with `last_sequence`
+before waiting for its durable prefix and sending the next source. An ACK without that
+cursor aborts bootstrap rather than allowing activation entry with an unproven source prefix.
 
 Startup recovery runs under the daemon's exclusive instance lock before new work is admitted.
 It closes earlier local stdio ownership, settles prepared requests as `not_sent` and unresolved
