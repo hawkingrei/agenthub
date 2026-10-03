@@ -38,8 +38,9 @@ impl RaraHandle {
                     "direct runtime rejected a required loop source"
                 );
                 self.record_ack_cursor(&ack);
+                self.await_admitted_events().await?;
             }
-            self.await_admitted_events().await
+            Ok(())
         }
         .await;
         if result.is_err() {

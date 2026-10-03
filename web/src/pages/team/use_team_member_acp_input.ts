@@ -46,7 +46,7 @@ export function useTeamMemberAcpInput({
   ) => {
     const text = rawText.trim();
     if (!text || !selectedSessionId || !onSendInput || sendingInputRef.current) {
-      return;
+      return false;
     }
     sendingInputRef.current = true;
     setSendingInput(true);
@@ -65,6 +65,7 @@ export function useTeamMemberAcpInput({
       sendingInputRef.current = false;
       setSendingInput(false);
     }
+    return true;
   }, [onSendInput, selectedSessionId]);
 
   const handleSendInput = React.useCallback(async () => {
@@ -75,7 +76,10 @@ export function useTeamMemberAcpInput({
   }, [input, sendMemberInput]);
 
   const handleSubmitRequestUserInput = React.useCallback(async (text: string, target?: NativeInputTarget) => {
-    await sendMemberInput(text, { nativeInput: target });
+    const sent = await sendMemberInput(text, { nativeInput: target });
+    if (!sent) {
+      throw new Error("Input was not sent. Wait for any pending input to finish, then retry in an active session.");
+    }
   }, [sendMemberInput]);
 
   const handleInputChange = React.useCallback(

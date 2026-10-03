@@ -320,8 +320,9 @@ before creating a session. It pins the configured role entry and managed skills 
 launch configuration used by other local adapters. The role entry and outer identity arrive
 as a session-scoped user-layer prompt source; skills arrive as inline registrations. One
 input starts the activation only after every registration has an accepted durable receipt
-and its acknowledged event prefix has committed. A partial bootstrap is not retried in the
-same native session. Source limits are checked before sending the first registration.
+and its acknowledged event prefix has committed. Each registration waits for its acknowledged
+prefix to commit before the next source control is sent. A partial bootstrap is not retried
+in the same native session. Source limits are checked before sending the first registration.
 
 The `native-loop-v2` source contract is part of the configuration digest and entry version.
 It keeps activation, local launch, native runtime and native session identities distinct;
@@ -433,6 +434,10 @@ Receipt metadata contains safe identifiers, method/status, timestamps and an all
 rejection code, without request bodies or provider rejection prose. No control-request
 outcome authorizes an automatic replacement send.
 
+Admission rejected because the connection is closing records `not_sent`. Runtime-identity
+errors record `not_sent` only for a request targeting the wrong runtime before dispatch;
+a foreign response after dispatch leaves the request outcome unknown.
+
 Managed user input atomically persists the attempted conversation message and prepared
 receipt under the caller's message ID before sending. A daemon-owned task finishes receipt
 persistence even if the HTTP caller disconnects. Reusing the ID cannot create another
@@ -447,6 +452,10 @@ The input API accepts an optional `native_input` object with `runtime_id`, `sess
 native answer is never retargeted to a replacement local session, and malformed native cards
 cannot fall back to ordinary text input. Untargeted text cannot answer a pending question
 or permission. Existing ACP callers retain their input format and session-retry behavior.
+
+A question-card submission rejected by the web input gate must reject its callback so the
+card shows a retryable error. An in-flight send, missing session or unavailable callback
+cannot silently acknowledge an unsent answer. Retrying remains an explicit user action.
 
 The typed control mapper validates target, turn and encoded size before dispatch.
 Native shell rejection is explicitly represented as `Deny`, serialized to the pinned
@@ -504,12 +513,11 @@ or reference summaries, but it must not treat Rara memory files as AgentHub's ca
 Task-scoped memory updates may derive their routing prefix from the canonical Team task expression.
 The prefix must be stable for the lifetime of that task:
 
-- derive the prefix from the task id plus normalized task title/summary, not from transient chat text
+- derive the prefix from the task id plus normalized initial title/summary, not from transient chat text
 - persist the derived prefix with the task or Rara thread continuity before writing memory
 - reuse the same prefix for follow-ups, clarifications, retries, and nested Rara subteam work for
   that task
-- create a new prefix only when AgentHub creates a new canonical task or explicitly retitles/rekeys
-  the task
+- create a new prefix only for a new or rekeyed task ID; retitling the same task preserves its prefix
 
 This lets Rara tune memory around the task wording while avoiding prefix drift across turns.
 

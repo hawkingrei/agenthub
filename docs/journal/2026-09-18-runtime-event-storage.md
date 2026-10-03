@@ -186,6 +186,48 @@ npm exec tsc -- --noEmit
 npm run build
 ```
 
+## Control Admission And Source Ordering Follow-Up (2026-10-03)
+
+Review identified three admission-boundary defects and one contradictory task-routing statement:
+
+- A connection closing before dispatch recorded an unknown outcome. It now records `not_sent`
+  without issuing a provider request. A foreign-runtime response after dispatch still records
+  `outcome_unknown`; only a request addressed to the wrong runtime before dispatch is `not_sent`.
+- A source batch could send its next control before the previous ACK's event prefix committed.
+  Each registration now waits for that durable prefix. A gap retires the failed bootstrap without
+  preparing or sending the next registration.
+- A question submitted while another input was in flight resolved without sending. Question
+  callbacks now reject an unavailable send, allowing the card to show an error and retain its
+  selection for an explicit retry. Missing sessions, callbacks and empty answers also reject.
+- The task-prefix contract now consistently follows task-ID lifetime: retitling preserves the
+  stored prefix; a new or rekeyed task ID selects a new prefix. Storage behavior is unchanged.
+
+Before the fixes, the focused Closing regression recorded `outcome_unknown`, the source regression
+observed two prepared controls before the first source event, and all five input-gate cases resolved
+instead of rejecting. Afterward, 29 runtime/receipt cases passed (two opt-in cases ignored), six
+native activation cases passed, and both task-context cases passed. The 28 focused web cases, lint,
+TypeScript, production build, root library/test Clippy with warnings denied and formatting passed.
+
+An isolated Chromium fixture used the real Team input hook and question card. Before the change,
+a blocked answer returned with no error and no transport call. Afterward, the card displayed a
+retryable error, retained the selected option and sent the original native target exactly once
+after an explicit retry. Neither version retried automatically, and no browser exceptions occurred.
+Validation used Playwright with local Chromium because Chrome DevTools MCP was unavailable; it
+does not establish production backend or real-provider behavior. Temporary fixtures were removed.
+
+```bash
+cargo test --locked --offline -p agenthub --lib agent::manager::rara:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tests::native:: -- --test-threads=1
+cargo test --locked --offline -p agenthub-db loop_task_context -- --test-threads=1
+cargo clippy --locked --offline -p agenthub --lib --tests -- -D warnings
+cargo fmt --all --check
+cd web
+npm exec vitest -- run src/pages/team/use_team_member_acp_input.test.tsx src/components/native_input.test.tsx src/native_input.test.ts src/components/use_agents_workbench_panel.test.tsx src/pages/team/use_team_member_acp_view_model.test.tsx
+npm run lint
+npm exec tsc -- --noEmit
+npm run build
+```
+
 ## Permission And Cancellation Checkpoint
 
 Committed pending plan/shell input now allocates a callback through the existing permission

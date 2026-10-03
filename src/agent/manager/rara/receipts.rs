@@ -97,6 +97,7 @@ pub(super) async fn send_prepared(
         frame.request_id() == permit.request_id(),
         "direct request permit identity mismatch"
     );
+    let wrong_runtime_before_dispatch = frame.runtime_id() != client.handshake().runtime_id;
     match client.request(frame).await {
         Ok(ack) => {
             let result = async {
@@ -125,8 +126,12 @@ pub(super) async fn send_prepared(
                 ConnectionError::QueueFull
                 | ConnectionError::ReceiptCapacity
                 | ConnectionError::RequestIdReused
-                | ConnectionError::WrongRuntime
+                | ConnectionError::Closing
                 | ConnectionError::UnsupportedMethod => RuntimeSubmissionFailure::NotSent,
+                // A foreign response can also cause WrongRuntime after this request was sent.
+                ConnectionError::WrongRuntime if wrong_runtime_before_dispatch => {
+                    RuntimeSubmissionFailure::NotSent
+                }
                 _ => RuntimeSubmissionFailure::OutcomeUnknown,
             };
             store

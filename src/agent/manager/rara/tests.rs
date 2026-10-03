@@ -11,6 +11,7 @@ mod history;
 mod input;
 mod native;
 mod permissions;
+mod sources;
 
 const PEER: &str = r#"#!/usr/bin/env python3
 import json, os, pathlib, signal, subprocess, sys, time
@@ -48,10 +49,12 @@ if mode == 'missing_method':
     methods.remove('input.answer_shell')
 if mode in ('replay', 'gap'):
     methods.append('output.replay')
+if mode.startswith('source_'):
+    methods.extend(['prompt_source.register', 'skill_source.register'])
 emit('handshake', {'protocol_version': 1, 'runtime_version': 'fixture', 'runtime_id': runtime,
-    'transport': 'stdio-jsonl', 'request_families': ['session', 'input', 'server'] + (['output'] if mode in ('replay', 'gap') else []),
+    'transport': 'stdio-jsonl', 'request_families': ['session', 'input', 'server'] + (['output'] if mode in ('replay', 'gap') else []) + (['prompt_source', 'skill_source'] if mode.startswith('source_') else []),
     'request_methods': methods,
-    'event_families': ['session', 'input', 'assistant', 'tool', 'approval', 'plan', 'warning', 'error'],
+    'event_families': ['session', 'input', 'assistant', 'tool', 'approval', 'plan', 'warning', 'error'] + (['prompt_source', 'skill'] if mode.startswith('source_') else []),
     'capabilities': {'graceful_shutdown': True, 'approval_persistence': False,
         'replay': ({'lifetime': 'runtime', 'max_events_per_session': 256} if mode in ('replay', 'gap') else {'lifetime': 'unavailable'}),
         'request_receipts': {'lifetime': 'runtime', 'max_requests': 32}},
@@ -84,6 +87,28 @@ for line in sys.stdin:
             inputs += 1
             with (root / 'requests.jsonl').open('a') as record:
                 record.write(json.dumps(request) + '\n')
+            if operation in ('register', 'register_skill'):
+                sequence += 1
+                emit('ack', {'runtime_id': runtime, 'request_id': envelope['request_id'],
+                    'result': {'status': 'accepted', 'session_id': native, 'turn_id': None, 'last_sequence': sequence}})
+                if inputs == 1:
+                    (root / 'source-ack').write_text('accepted')
+                    deadline = time.monotonic() + 10
+                    while not (root / 'release-source').exists():
+                        assert time.monotonic() < deadline
+                        time.sleep(0.01)
+                    if mode == 'source_gap':
+                        sequence += 1
+                body = envelope['request']['payload']['payload']
+                family = 'prompt_source' if operation == 'register' else 'skill'
+                payload = {'source_id': body['source_id']}
+                if family == 'skill':
+                    payload['name'] = body['name']
+                emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+                    'event_id': 'event-' + str(sequence), 'sequence': sequence,
+                    'provenance': {'session_id': None},
+                    'event': {'type': family, 'payload': {'type': 'registered', 'payload': payload}}}})
+                continue
             if operation in ('cancel_current_turn', 'interrupt_current_turn'):
                 turn = request['payload']['expected_turn_id']
                 emit('ack', {'runtime_id': runtime, 'request_id': envelope['request_id'],
@@ -96,6 +121,10 @@ for line in sys.stdin:
                 continue
             if mode == 'input_drop':
                 sys.exit(0)
+            if mode == 'input_wrong_runtime':
+                emit('ack', {'runtime_id': 'foreign-runtime', 'request_id': envelope['request_id'],
+                    'result': {'status': 'accepted', 'session_id': native, 'turn_id': 'turn-1', 'last_sequence': sequence}})
+                continue
             if mode == 'input_delayed':
                 while not (root / 'release-ack').exists():
                     time.sleep(0.01)
@@ -178,6 +207,11 @@ for line in sys.stdin:
         'result': {'status': 'accepted', 'session_id': None, 'turn_id': None, 'last_sequence': None}})
     if mode in ('stall', 'descendant'):
         time.sleep(30)
+    if mode == 'shutdown_delayed':
+        deadline = time.monotonic() + 10
+        while not (root / 'release-shutdown').exists():
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
     (root / 'complete').write_text(request_id)
     emit('shutdown_complete', {'runtime_id': runtime, 'request_id': request_id})
     sys.exit(0)
@@ -190,6 +224,14 @@ struct Fixture {
 }
 
 impl Fixture {
+    async fn runtime(&self) -> std::sync::Arc<RaraHandle> {
+        let handles = self.manager.inner.read().await;
+        let AgentInput::Rara(runtime) = &handles[&self.agent_id].input else {
+            panic!("direct handle");
+        };
+        runtime.clone()
+    }
+
     async fn new(scenario: &str) -> Self {
         let state = crate::api::team_tests::build_test_state().await;
         let directory =

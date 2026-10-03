@@ -44,6 +44,70 @@ impl Fixture {
 }
 
 #[tokio::test]
+async fn closing_before_dispatch_records_not_sent_without_a_provider_request() {
+    use agenthub_db::runtime_events::{RuntimeEventStore, RuntimeRequestKind};
+    use agenthub_rara::{ConnectionError, ControlRequest};
+
+    let fixture = Fixture::new("shutdown_delayed").await;
+    let session = fixture
+        .manager
+        .start_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    let runtime = fixture.runtime().await;
+    let closing = runtime.clone();
+    let shutdown = tokio::spawn(async move { closing.shutdown("closing-test".into()).await });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !fixture.directory.join("shutdown").exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let pool = fixture
+        .manager
+        .event_dbs
+        .pool_for_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    let store = RuntimeEventStore::bind(pool, &session, "managed-runtime")
+        .await
+        .unwrap();
+    let frame = ControlRequest::Prompt {
+        prompt: "Must not execute".into(),
+    }
+    .frame("managed-runtime", "closing-input", Some("native-session"))
+    .unwrap();
+    let error = receipts::submit(
+        &runtime,
+        &store,
+        frame,
+        RuntimeRequestKind::Prompt,
+        Some("native-session"),
+        None,
+    )
+    .await
+    .unwrap_err();
+    let receipt = fixture.input_receipt("closing-input").await;
+    let requests = fixture.input_requests();
+    std::fs::write(fixture.directory.join("release-shutdown"), "ready").unwrap();
+    tokio::time::timeout(Duration::from_secs(5), shutdown)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    fixture.assert_clean().await;
+    fixture.finish().await;
+
+    assert_eq!(
+        error.downcast_ref::<ConnectionError>(),
+        Some(&ConnectionError::Closing)
+    );
+    assert_eq!(receipt.0, "not_sent");
+    assert!(requests.is_empty());
+}
+
+#[tokio::test]
 async fn inputs_keep_single_request_identity_and_distinct_delivery_receipts() {
     let fixture = Fixture::new("normal").await;
     let session = fixture
@@ -126,6 +190,7 @@ async fn rejected_and_disconnected_inputs_keep_outcomes_without_resending() {
     for (scenario, status) in [
         ("input_reject", "rejected"),
         ("input_drop", "outcome_unknown"),
+        ("input_wrong_runtime", "outcome_unknown"),
     ] {
         let fixture = Fixture::new(scenario).await;
         let session = fixture
@@ -156,7 +221,7 @@ async fn rejected_and_disconnected_inputs_keep_outcomes_without_resending() {
                 .contains("private-diagnostic-token")
         );
         assert_eq!(fixture.input_requests().len(), 1);
-        if scenario == "input_drop" {
+        if scenario != "input_reject" {
             fixture.assert_clean().await;
         } else {
             fixture.manager.stop_agent(&fixture.agent_id).await.unwrap();
