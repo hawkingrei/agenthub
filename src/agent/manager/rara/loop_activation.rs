@@ -65,6 +65,25 @@ impl AgentManager {
                 content,
             });
         }
+        for server in pinned.launch.mcp_servers() {
+            let agent_client_protocol::schema::v1::McpServer::Stdio(server) = server else {
+                anyhow::bail!("native loop MCP sources require a local proxy");
+            };
+            sources.push(SourceRegistration::Mcp(agenthub_rara::McpSource {
+                source_id: server.name,
+                command: server
+                    .command
+                    .to_str()
+                    .ok_or_else(|| anyhow::anyhow!("native proxy executable must be UTF-8"))?
+                    .to_owned(),
+                args: server.args,
+                env: server
+                    .env
+                    .into_iter()
+                    .map(|entry| (entry.name, entry.value))
+                    .collect(),
+            }));
+        }
         runtime.register_loop_sources(sources).await?;
         Ok("Run the registered loop activation once using its role, recovery, and finish contract.".into())
     }

@@ -299,6 +299,9 @@ fn method(frame: &ClientFrame) -> Result<&'static str, ConnectionError> {
         (Some("skill_source"), Some("register_skill")) => Ok("skill_source.register"),
         (Some("skill_source"), Some("disable_skill")) => Ok("skill_source.disable"),
         (Some("skill_source"), Some("query_skills")) => Ok("skill_source.query"),
+        (Some("mcp_source"), Some("register")) => Ok("mcp_source.register"),
+        (Some("mcp_source"), Some("unregister")) => Ok("mcp_source.unregister"),
+        (Some("mcp_source"), Some("query_sources")) => Ok("mcp_source.query"),
         _ => Err(ConnectionError::UnsupportedMethod),
     }
 }

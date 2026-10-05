@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use super::*;
 
 mod cycle;
+mod mcp;
 
 const CHILD_INSTRUCTION: &str =
     "native-loop-child-isolation: create a native private task and report";

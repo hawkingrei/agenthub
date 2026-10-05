@@ -1,6 +1,6 @@
 {
-  "upstream_commit": "6f489462251b73e1695bb22a59d2ece59ba26a21",
-  "binary_sha256": "08f6e9b90704b60491efd6115acee7bd7a6c8c5a27cf80c2ee12f51002f190b4",
+  "upstream_commit": "460778e10c2ce01f2dc6b6de57d4d25c609f9c40",
+  "binary_sha256": "2f50d4ea5f22e17420aa41f13fdad153673d992a472ad1927e163bf81996f97e",
   "frames": [
     {
       "type": "handshake",
@@ -14,6 +14,7 @@
           "input",
           "prompt_source",
           "skill_source",
+          "mcp_source",
           "output",
           "server"
         ],
@@ -33,6 +34,9 @@
           "skill_source.register",
           "skill_source.disable",
           "skill_source.query",
+          "mcp_source.register",
+          "mcp_source.unregister",
+          "mcp_source.query",
           "output.replay",
           "server.shutdown"
         ],

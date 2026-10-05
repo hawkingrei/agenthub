@@ -18,6 +18,7 @@ pub enum RuntimeRequestKind {
     Replay,
     PromptSource,
     SkillSource,
+    McpSource,
 }
 
 impl RuntimeRequestKind {
@@ -298,6 +299,7 @@ impl RuntimeEventStore {
                     RuntimeRequestKind::CreateSession
                     | RuntimeRequestKind::PromptSource
                     | RuntimeRequestKind::SkillSource
+                    | RuntimeRequestKind::McpSource
                     | RuntimeRequestKind::Query
                     | RuntimeRequestKind::Replay => turn_id.is_none(),
                     RuntimeRequestKind::Cancel | RuntimeRequestKind::Interrupt => {

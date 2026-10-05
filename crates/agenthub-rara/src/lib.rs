@@ -25,12 +25,12 @@ pub use protocol::{
     Acknowledgement, ClientFrame, ControlEnvelope, EventFrame, ProtocolError, Provenance,
     RejectionCode, ReplayGap, RequestResult, RuntimeEvent, ServerFrame,
 };
-pub use source::SourceRegistration;
+pub use source::{McpSource, SourceRegistration};
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const TRANSPORT: &str = "stdio-jsonl";
 pub const MAX_FRAME_BYTES: usize = 1_048_576;
-pub const PINNED_UPSTREAM_REVISION: &str = "6f489462251b73e1695bb22a59d2ece59ba26a21";
+pub const PINNED_UPSTREAM_REVISION: &str = "460778e10c2ce01f2dc6b6de57d4d25c609f9c40";
 
 #[cfg(test)]
 mod tests;

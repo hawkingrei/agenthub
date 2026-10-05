@@ -4,7 +4,7 @@ use super::*;
 
 async fn source_attempts(pool: &sqlx::SqlitePool) -> i64 {
     sqlx::query_scalar(
-        "SELECT COUNT(*) FROM runtime_control_receipts WHERE kind IN ('prompt_source', 'skill_source')",
+        "SELECT COUNT(*) FROM runtime_control_receipts WHERE kind IN ('prompt_source', 'skill_source', 'mcp_source')",
     )
     .fetch_one(pool)
     .await
@@ -75,7 +75,12 @@ async fn assert_invalid_source_cursor(scenario: &str) {
 
 #[tokio::test]
 async fn source_registration_waits_for_each_durable_ack_prefix() {
-    for scenario in ["source_delayed", "source_gap"] {
+    for (scenario, mcp) in [
+        ("source_delayed", false),
+        ("source_gap", false),
+        ("source_delayed", true),
+        ("source_gap", true),
+    ] {
         let fixture = Fixture::new(scenario).await;
         fixture
             .manager
@@ -86,9 +91,13 @@ async fn source_registration_waits_for_each_durable_ack_prefix() {
         let registration = tokio::spawn(async move {
             runtime
                 .register_loop_sources(vec![
-                    SourceRegistration::Prompt {
-                        source_id: "role".into(),
-                        content: "Review the assigned task.".into(),
+                    if mcp {
+                        mcp_source()
+                    } else {
+                        SourceRegistration::Prompt {
+                            source_id: "role".into(),
+                            content: "Review the assigned task.".into(),
+                        }
                     },
                     SourceRegistration::Skill {
                         source_id: "skills".into(),
@@ -147,4 +156,53 @@ async fn source_registration_waits_for_each_durable_ack_prefix() {
         assert_eq!(result.is_ok(), scenario == "source_delayed");
         assert_eq!(after, if scenario == "source_delayed" { 2 } else { 1 });
     }
+}
+
+fn mcp_source() -> SourceRegistration {
+    SourceRegistration::Mcp(agenthub_rara::McpSource {
+        source_id: "nowledge-mem".into(),
+        command: "/usr/bin/agenthub".into(),
+        args: vec![
+            "mcp-proxy".into(),
+            "--server-id".into(),
+            "nowledge-mem".into(),
+        ],
+        env: [(
+            "AGENTHUB_LOOP_CREDENTIAL_FILE".into(),
+            "/private/activation.json".into(),
+        )]
+        .into(),
+    })
+}
+
+#[tokio::test]
+async fn missing_mcp_capability_rejects_the_entire_bootstrap_before_any_send() {
+    let fixture = Fixture::new("source_missing_mcp").await;
+    fixture
+        .manager
+        .start_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    let result = fixture
+        .runtime()
+        .await
+        .register_loop_sources(vec![
+            SourceRegistration::Prompt {
+                source_id: "role".into(),
+                content: "Review the task".into(),
+            },
+            mcp_source(),
+        ])
+        .await;
+    assert!(result.is_err());
+    let pool = fixture
+        .manager
+        .event_dbs
+        .pool_for_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    assert_eq!(source_attempts(&pool).await, 0);
+    assert!(!fixture.directory.join("requests.jsonl").exists());
+    fixture.manager.stop_agent(&fixture.agent_id).await.unwrap();
+    fixture.finish().await;
 }

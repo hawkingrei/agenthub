@@ -25,6 +25,11 @@ impl RaraHandle {
         }
         let result = async {
             for source in sources {
+                let kind = match &source {
+                    SourceRegistration::Prompt { .. } => "prompt",
+                    SourceRegistration::Skill { .. } => "skill",
+                    SourceRegistration::Mcp(_) => "MCP",
+                };
                 let previous_sequence = *self.progress.borrow();
                 let ack = receipts::control(
                     &self.tasks,
@@ -42,7 +47,7 @@ impl RaraHandle {
                             ..
                         } if sequence > previous_sequence
                     ),
-                    "direct runtime did not acknowledge a required loop source event prefix"
+                    "direct runtime did not acknowledge a required {kind} source event prefix: {ack:?} (previous sequence {previous_sequence})"
                 );
                 self.record_ack_cursor(&ack);
                 self.await_admitted_events().await?;
