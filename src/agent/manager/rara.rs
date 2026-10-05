@@ -23,7 +23,7 @@ mod session;
 pub use session::RaraHandle;
 
 const PROCESS_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
-pub(super) const LOOP_SOURCE_VERSION: &str = "native-loop-v2";
+pub(super) const LOOP_SOURCE_VERSION: &str = "native-loop-v3";
 
 #[cfg(all(test, unix))]
 mod tests;
@@ -136,6 +136,16 @@ impl AgentManager {
             client
                 .handshake()
                 .require_methods(&["prompt_source.register", "skill_source.register"])?;
+            let has_mcp_sources = self
+                .loop_credentials
+                .lock()
+                .await
+                .get(agent_id)
+                .and_then(|credentials| credentials.native_sources.as_ref())
+                .is_some_and(|sources| !sources.launch.mcp_servers().is_empty());
+            if has_mcp_sources {
+                agenthub_rara::McpSource::require_capability(client.handshake())?;
+            }
         }
         let store = agenthub_db::runtime_events::RuntimeEventStore::bind(
             self.event_dbs.pool_for_agent(agent_id).await?,

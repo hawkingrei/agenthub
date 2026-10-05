@@ -257,8 +257,8 @@ provider raw JSON must stay redacted from diagnostics metadata by default.
   timeout.
 
 The compatible protocol fixture is pinned to upstream commit
-`6f489462251b73e1695bb22a59d2ece59ba26a21` in
-[the independently validated prerequisite PR](https://github.com/linkerdog/rara/pull/885).
+`460778e10c2ce01f2dc6b6de57d4d25c609f9c40`. Controlled-source delivery is tracked in
+[the prerequisite PR](https://github.com/linkerdog/rara/pull/1058).
 Package version `0.0.22` alone does not identify this protocol. The version 1 envelope
 uses `type`/`payload`; the handshake carries `runtime_id`, `runtime_version`,
 `request_methods`, family lists and explicit receipt/replay/approval lifetimes.
@@ -328,7 +328,27 @@ and its acknowledged event prefix has committed. Each registration waits for its
 prefix to commit before the next source control is sent. A partial bootstrap is not retried
 in the same native session. Source limits are checked before sending the first registration.
 
-The `native-loop-v2` source contract is part of the configuration digest and entry version.
+Configured MCP sources additionally require `mcp_source.register`,
+`mcp_source.unregister`, `mcp_source.query` and the `mcp` event family before
+session creation. Only the existing authorized local proxy descriptors are
+registered: the executable, server identity, arguments and renewable activation
+credential-file reference. Upstream endpoints, headers and credentials remain in
+the daemon. Source registration uses the same durable receipt and ordered event
+barrier as prompts and skills. The pinned upstream connection explicitly uses MCP
+`2025-11-25` with its initialize/initialized lifecycle. The batch is validated before its first send,
+including the native limit of 16 MCP sources; partial registration is never
+retried on an uncertain session.
+
+Native source events project validated identifiers and bounded catalogue counts;
+launch data and arbitrary diagnostic fields are not history metadata. The native
+runtime owns each source child and fences invocation to its session. Shared proxy
+authorization is checked on calls, so cached catalogue entries do not retain
+authority after an App or activation is revoked. Transport loss after a write
+preserves the proxy's uncertain operation record and does not authorize retries.
+Semantic shutdown must retire source children; the outer supervisor independently
+proves process-tree cleanup before replacement execution.
+
+The `native-loop-v3` source contract is part of the configuration digest and entry version.
 It keeps activation, local launch, native runtime and native session identities distinct;
 native subagents receive no independent outer membership, mailbox or execution credentials.
 An ordinary completed turn is insufficient to finish an activation: the existing structured
@@ -336,12 +356,14 @@ finish service owns that outcome. A terminal turn without an outcome becomes int
 only after existing supervised cleanup. A live input/approval wait keeps its callback owner;
 canceling that wait may end the native turn through input-discarded alone.
 
-The pinned build has no cross-process resume, durable approval recovery, controlled MCP source
-registration, or semantic-guard event contract. Resume policies and configured native MCP/App
-bindings therefore fail preflight. Loop launches disable ambient extension discovery and native
-memory facilities. They never replace missing controlled sources with ambient configuration.
+The pinned build has no cross-process resume, durable approval recovery or semantic-guard
+event contract. Resume policies therefore fail preflight. MCP/App/Mem launch validation
+reuses the shared binding rules; older runtimes without the negotiated source controls
+fail startup before the entry prompt. Loop launches disable ambient extension discovery
+and native memory facilities. They never replace missing controlled sources with ambient configuration.
 Card/task source binding, stable task memory prefixes and activation trace enrichment are
-implemented. Controlled tool sources and semantic outcome adaptation remain unfinished.
+implemented. Semantic outcome adaptation and assembled configured-provider acceptance
+remain unfinished.
 
 ### 2) Configuration
 

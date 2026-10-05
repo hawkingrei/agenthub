@@ -53,10 +53,12 @@ if mode in ('replay', 'gap'):
     methods.append('output.replay')
 if mode.startswith('source_'):
     methods.extend(['prompt_source.register', 'skill_source.register'])
+    if mode != 'source_missing_mcp':
+        methods.extend(['mcp_source.register', 'mcp_source.unregister', 'mcp_source.query'])
 emit('handshake', {'protocol_version': 1, 'runtime_version': 'fixture', 'runtime_id': runtime,
-    'transport': 'stdio-jsonl', 'request_families': ['session', 'input', 'server'] + (['output'] if mode in ('replay', 'gap') else []) + (['prompt_source', 'skill_source'] if mode.startswith('source_') else []),
+    'transport': 'stdio-jsonl', 'request_families': ['session', 'input', 'server'] + (['output'] if mode in ('replay', 'gap') else []) + (['prompt_source', 'skill_source'] if mode.startswith('source_') else []) + (['mcp_source'] if mode.startswith('source_') and mode != 'source_missing_mcp' else []),
     'request_methods': methods,
-    'event_families': ['session', 'input', 'assistant', 'tool', 'approval', 'plan', 'warning', 'error'] + (['prompt_source', 'skill'] if mode.startswith('source_') else []),
+    'event_families': ['session', 'input', 'assistant', 'tool', 'approval', 'plan', 'warning', 'error'] + (['prompt_source', 'skill', 'mcp'] if mode.startswith('source_') else []),
     'capabilities': {'graceful_shutdown': True, 'approval_persistence': False,
         'replay': ({'lifetime': 'runtime', 'max_events_per_session': 256} if mode in ('replay', 'gap') else {'lifetime': 'unavailable'}),
         'request_receipts': {'lifetime': 'runtime', 'max_requests': 32}},
@@ -108,13 +110,17 @@ for line in sys.stdin:
                         sequence += 1
                 body = envelope['request']['payload']['payload']
                 family = 'prompt_source' if operation == 'register' else 'skill'
+                kind = 'registered'
                 payload = {'source_id': body['source_id']}
+                if envelope['request']['type'] == 'mcp_source':
+                    family, kind = 'mcp', 'source_registered'
+                    payload['tool_names'] = []
                 if family == 'skill':
                     payload['name'] = body['name']
                 emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
                     'event_id': 'event-' + str(sequence), 'sequence': sequence,
                     'provenance': {'session_id': None},
-                    'event': {'type': family, 'payload': {'type': 'registered', 'payload': payload}}}})
+                    'event': {'type': family, 'payload': {'type': kind, 'payload': payload}}}})
                 continue
             if operation in ('cancel_current_turn', 'interrupt_current_turn'):
                 turn = request['payload']['expected_turn_id']

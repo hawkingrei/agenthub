@@ -25,6 +25,7 @@ pub enum ControlKind {
     ShellAnswer,
     PromptSource,
     SkillSource,
+    McpSource,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]

@@ -58,6 +58,7 @@ pub(super) fn kind(kind: ControlKind) -> RuntimeRequestKind {
         ControlKind::ShellAnswer => RuntimeRequestKind::ShellAnswer,
         ControlKind::PromptSource => RuntimeRequestKind::PromptSource,
         ControlKind::SkillSource => RuntimeRequestKind::SkillSource,
+        ControlKind::McpSource => RuntimeRequestKind::McpSource,
     }
 }
 

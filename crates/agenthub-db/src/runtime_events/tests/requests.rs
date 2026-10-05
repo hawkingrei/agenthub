@@ -31,6 +31,7 @@ async fn source_receipts_require_owned_session_ack_without_turn_or_queue() {
     for (id, kind) in [
         ("prompt-source", RuntimeRequestKind::PromptSource),
         ("skill-source", RuntimeRequestKind::SkillSource),
+        ("mcp-source", RuntimeRequestKind::McpSource),
     ] {
         fixture
             .owner

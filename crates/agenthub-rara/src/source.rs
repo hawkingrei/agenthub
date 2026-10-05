@@ -3,10 +3,14 @@ use serde_json::{Value, json};
 use crate::protocol::validate_id;
 use crate::{ControlKind, Handshake, ProtocolError};
 
+mod mcp;
+pub use mcp::McpSource;
+
 /// Explicit session inputs. No filesystem discovery, system-layer authority, or
 /// persistence across native sessions is implied by registering these sources.
 #[derive(Clone)]
 pub enum SourceRegistration {
+    Mcp(McpSource),
     Prompt {
         source_id: String,
         content: String,
@@ -25,11 +29,16 @@ impl SourceRegistration {
         let mut skill_count = 0;
         let mut prompt_bytes = 0;
         let mut skill_bytes = 0;
+        let mut mcp_count = 0;
         let mut identities = std::collections::BTreeSet::new();
         for source in sources {
             source.require_capability(handshake)?;
             source.operation()?;
             let identity = match source {
+                Self::Mcp(source) => {
+                    mcp_count += 1;
+                    ("mcp", source.source_id.as_str(), "")
+                }
                 Self::Prompt { source_id, content } => {
                     prompt_count += 1;
                     prompt_bytes += content.len();
@@ -50,6 +59,7 @@ impl SourceRegistration {
             }
             if prompt_count > 32
                 || skill_count > 32
+                || mcp_count > 16
                 || prompt_bytes > 256 * 1024
                 || skill_bytes > 256 * 1024
             {
@@ -61,36 +71,43 @@ impl SourceRegistration {
 
     pub fn source_id(&self) -> &str {
         match self {
+            Self::Mcp(source) => &source.source_id,
             Self::Prompt { source_id, .. } | Self::Skill { source_id, .. } => source_id,
         }
     }
 
     pub(crate) fn kind(&self) -> ControlKind {
         match self {
+            Self::Mcp(_) => ControlKind::McpSource,
             Self::Prompt { .. } => ControlKind::PromptSource,
             Self::Skill { .. } => ControlKind::SkillSource,
         }
     }
 
     pub fn require_capability(&self, handshake: &Handshake) -> Result<(), ProtocolError> {
-        handshake.require_methods(&[match self {
-            Self::Prompt { .. } => "prompt_source.register",
-            Self::Skill { .. } => "skill_source.register",
-        }])
+        match self {
+            Self::Mcp(_) => McpSource::require_capability(handshake),
+            Self::Prompt { .. } => handshake.require_methods(&["prompt_source.register"]),
+            Self::Skill { .. } => handshake.require_methods(&["skill_source.register"]),
+        }
     }
 
     pub(crate) fn operation(&self) -> Result<(&'static str, &'static str, Value), ProtocolError> {
         validate_id(self.source_id())?;
         let content = match self {
-            Self::Prompt { content, .. } | Self::Skill { content, .. } => content,
+            Self::Mcp(_) => None,
+            Self::Prompt { content, .. } | Self::Skill { content, .. } => Some(content),
         };
-        if content.trim().is_empty() {
-            return Err(ProtocolError::MalformedFrame);
-        }
-        if content.len() > 64 * 1024 {
-            return Err(ProtocolError::FrameTooLarge);
+        if let Some(content) = content {
+            if content.trim().is_empty() {
+                return Err(ProtocolError::MalformedFrame);
+            }
+            if content.len() > 64 * 1024 {
+                return Err(ProtocolError::FrameTooLarge);
+            }
         }
         Ok(match self {
+            Self::Mcp(source) => ("mcp_source", "register", source.operation()?),
             Self::Prompt { source_id, content } => (
                 "prompt_source",
                 "register",
@@ -153,6 +170,7 @@ mod tests {
             assert_eq!(registration["source_id"], source.source_id());
             assert!(wire["payload"].get("expected_turn_id").is_none());
             match source {
+                SourceRegistration::Mcp(_) => unreachable!("prompt and skill fixtures only"),
                 SourceRegistration::Prompt { .. } => {
                     assert_eq!(envelope["request"]["type"], "prompt_source");
                     assert_eq!(registration["scope"], "session");

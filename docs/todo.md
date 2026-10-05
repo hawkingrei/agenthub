@@ -29,6 +29,8 @@ Delivery order and acceptance: [native capability rollout](journal/2026-10-05-na
 
 - [ ] Add capability-negotiated, session-scoped MCP sources through the existing journaled proxy,
   including App and Mem bindings, revocation, credential isolation and uncertain-write handling.
+  Implementation and deterministic actual-process qualification are complete; upstream publication
+  and applicable CI remain delivery gates. See the rollout checkpoint above.
 - [ ] Map semantic guard outcomes into canonical loop outcomes and clarification waits without
   treating an ordinary completed provider turn as a structured finish.
 - [ ] Support cross-process provider continuity with a new fenced activation, preserved task/IM
