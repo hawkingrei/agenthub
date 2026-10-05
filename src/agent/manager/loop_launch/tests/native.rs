@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 use super::*;
 
 mod input;
+mod sources;
 mod transport;
 
 const PROVIDER: &str = r#"#!/usr/bin/env python3
@@ -66,6 +67,10 @@ for line in sys.stdin:
         ack(rid)
     elif family == 'skill_source':
         event('skill', 'registered', {'source_id':body['source_id'], 'name':body['name']})
+        ack(rid)
+    elif family == 'mcp_source':
+        assert operation == 'register'
+        event('mcp', 'source_registered', {'source_id':body['source_id'], 'tool_names':[]})
         ack(rid)
     elif operation == 'submit_user_prompt':
         turn = str(uuid.uuid4())

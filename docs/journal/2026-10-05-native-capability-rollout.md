@@ -196,6 +196,20 @@ unchanged external-editor PTY failure. Ten isolated local repetitions and the fu
 local library test binary (2131 tests at `aa3a6e92`) passed; the CI failure is still not reproduced, and its
 remaining gate has not been waived.
 
+## Automatic Coverage Follow-Up
+
+PR #1190's build, test and coverage collection workflows passed at `fcb1cebb`,
+including the default Bazel lanes. Codecov's final patch check reported 85.52%
+against an 87.25% target. The principal uncovered path converted launch-pinned
+proxy descriptors into native source registrations; the actual-process fixture is
+intentionally opt-in and does not supply routine CI coverage.
+
+An automatic integration regression now drives this path through the real manager,
+canonical session and receipt handling with a deterministic stdio peer. It verifies
+that both App and Mem descriptors retain their exact executable, arguments and
+credential-file environment. It passes with local loopback services and preserves
+the separate actual-provider qualification gate. Coverage thresholds remain unchanged.
+
 ## Validation
 
 The initial checkpoint reopened scope; the controlled-source adapter now changes
