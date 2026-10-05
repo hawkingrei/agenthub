@@ -69,7 +69,12 @@ async fn native_loop_source_registration_preserves_authorized_proxy_descriptors(
         .unwrap()
         .unwrap();
     let entry = manager
-        .prepare_loop_entry(&reservation, &context, "Execute assigned work".into())
+        .prepare_loop_entry(
+            &fixture.state.teams,
+            &reservation,
+            &context,
+            "Execute assigned work".into(),
+        )
         .await
         .unwrap();
     assert!(entry.contains("registered loop activation"));
@@ -100,6 +105,28 @@ async fn native_loop_source_registration_preserves_authorized_proxy_descriptors(
             json!({"AGENTHUB_LOOP_CREDENTIAL_FILE":credential_file})
         );
     }
+    let input = manager.inner.read().await["worker"].input.clone();
+    let AgentInput::Rara(runtime) = input else {
+        panic!("native runtime")
+    };
+    assert!(
+        runtime
+            .send_input(&entry, Some("unrelated-input"), None, None)
+            .await
+            .is_err()
+    );
+    let submission = format!(
+        "loop-entry:{}:{}",
+        reservation.activation_id.as_deref().unwrap(),
+        reservation.generation
+    );
+    runtime
+        .send_input(&entry, Some(&submission), None, None)
+        .await
+        .unwrap();
+    let log = std::fs::read_to_string(fixture.directory.join("native-requests.jsonl")).unwrap();
+    assert!(!log.contains("unrelated-input"));
+    assert_eq!(log.matches("submit_guarded_prompt").count(), 1);
     manager.stop_agent("worker").await.unwrap();
     fixture.close().await;
 }

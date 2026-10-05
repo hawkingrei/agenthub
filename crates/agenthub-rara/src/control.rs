@@ -17,6 +17,7 @@ pub enum ControlKind {
     CreateSession,
     Query,
     Prompt,
+    GuardedPrompt,
     FollowUp,
     Cancel,
     Interrupt,
@@ -51,6 +52,7 @@ pub enum ShellDecision {
 #[derive(Clone)]
 pub enum ControlRequest {
     RegisterSource(crate::SourceRegistration),
+    GuardedPrompt(crate::GuardedPrompt),
     CreateSession,
     Query,
     Prompt {
@@ -87,6 +89,7 @@ impl ControlRequest {
             Self::CreateSession => ControlKind::CreateSession,
             Self::Query => ControlKind::Query,
             Self::Prompt { .. } => ControlKind::Prompt,
+            Self::GuardedPrompt(_) => ControlKind::GuardedPrompt,
             Self::FollowUp { .. } => ControlKind::FollowUp,
             Self::Cancel { .. } => ControlKind::Cancel,
             Self::Interrupt { .. } => ControlKind::Interrupt,
@@ -117,6 +120,14 @@ impl ControlRequest {
             Self::RegisterSource(source) => {
                 let (family, method, body) = source.operation()?;
                 (family, method, Some(body))
+            }
+            Self::GuardedPrompt(request) => {
+                request.validate()?;
+                (
+                    "input",
+                    "submit_guarded_prompt",
+                    Some(serde_json::to_value(request).map_err(|_| ProtocolError::Serialization)?),
+                )
             }
             Self::CreateSession => ("session", "create_session", None),
             Self::Query => ("session", "query_runtime_state", None),

@@ -18,6 +18,7 @@ use uuid::Uuid;
 mod controls;
 mod input;
 mod permissions;
+mod semantic_guard;
 mod sources;
 
 use super::{AgentManager, events::DurableEvents, receipts};
@@ -51,6 +52,7 @@ struct LiveState {
     sources_registered: bool,
     terminal_turn: bool,
     input_attempted: bool,
+    guard: Option<semantic_guard::GuardedActivation>,
 }
 
 struct Replay {
@@ -119,6 +121,7 @@ impl RaraHandle {
                 sources_registered: false,
                 terminal_turn: false,
                 input_attempted: false,
+                guard: None,
             })),
             delivery,
         })
@@ -267,10 +270,20 @@ impl RaraHandle {
                 state.pending = snapshot.pending_input;
             }
             EventEffect::TurnStarted { turn_id } => {
+                if let Some(guard) = &mut state.guard {
+                    guard.completed = None;
+                }
                 state.terminal_turn = false;
                 state.phase = SessionPhase::Running { turn_id };
             }
-            EventEffect::TurnEnded { turn_id, outcome } => {
+            EventEffect::TurnEnded {
+                turn_id,
+                outcome,
+                semantic,
+            } => {
+                if let Some(guard) = &mut state.guard {
+                    guard.completed = semantic.map(|decision| (turn_id.clone(), decision));
+                }
                 let awaiting_input = matches!(outcome, agenthub_rara::TurnEnd::Finished { reason: Some(ref reason) } if reason == "awaiting_input");
                 if !awaiting_input {
                     state.terminal_turn = true;

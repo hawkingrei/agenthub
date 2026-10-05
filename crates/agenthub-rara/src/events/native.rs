@@ -8,6 +8,7 @@ use serde_json::Value;
 pub(super) enum NativeEvent {
     Session(SessionEvent),
     Input(InputEvent),
+    SemanticGuard(crate::SemanticGuardEvent),
     Assistant(AssistantEvent),
     Tool(ToolEvent),
     Approval(ApprovalEvent),

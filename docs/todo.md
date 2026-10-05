@@ -33,6 +33,9 @@ Delivery order and acceptance: [native capability rollout](journal/2026-10-05-na
   and applicable CI remain delivery gates. See the rollout checkpoint above.
 - [ ] Map semantic guard outcomes into canonical loop outcomes and clarification waits without
   treating an ordinary completed provider turn as a structured finish.
+  Implementation now composes the existing finish, conversation and schedule transactions;
+  deterministic actual-process qualification passes; upstream publication and CI remain open. Evidence:
+  [native semantic outcomes](journal/2026-10-06-native-semantic-outcomes.md).
 - [ ] Support cross-process provider continuity with a new fenced activation, preserved task/IM
   identity and verified old-owner cleanup before replacement execution.
 - [ ] Persist and recover pending approvals with exact ownership, explicit decision receipts and

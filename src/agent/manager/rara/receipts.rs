@@ -50,6 +50,7 @@ pub(super) fn kind(kind: ControlKind) -> RuntimeRequestKind {
         ControlKind::CreateSession => RuntimeRequestKind::CreateSession,
         ControlKind::Query => RuntimeRequestKind::Query,
         ControlKind::Prompt => RuntimeRequestKind::Prompt,
+        ControlKind::GuardedPrompt => RuntimeRequestKind::GuardedPrompt,
         ControlKind::FollowUp => RuntimeRequestKind::FollowUp,
         ControlKind::Cancel => RuntimeRequestKind::Cancel,
         ControlKind::Interrupt => RuntimeRequestKind::Interrupt,

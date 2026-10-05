@@ -48,6 +48,14 @@ async fn accepted_question_answer_fences_duplicates_before_events_commit() {
         let question = output(&mut receiver, "tool_call").await;
         let target: InputTarget =
             serde_json::from_value(question["meta"]["native_input"].clone()).unwrap();
+        // Observe the waiting turn's terminal prefix before withholding answer events.
+        // Otherwise the last event of the first turn can race the cursor assertion.
+        loop {
+            let status = output(&mut receiver, "run_status").await;
+            if status["meta"]["provider_runtime"]["sequence"] == 4 {
+                break;
+            }
+        }
         answer(&fixture, &session, &target, "answer").await.unwrap();
         let accepted = fixture.input_receipt("answer").await;
         let untargeted = fixture
@@ -116,7 +124,7 @@ async fn accepted_question_answer_fences_duplicates_before_events_commit() {
         fixture.finish().await;
 
         assert_eq!(accepted.0, "accepted");
-        assert_eq!(cursor, 3, "an answer ACK cannot advance committed history");
+        assert_eq!(cursor, 4, "an answer ACK cannot advance committed history");
         assert!(matches!(
             untargeted
                 .unwrap_err()

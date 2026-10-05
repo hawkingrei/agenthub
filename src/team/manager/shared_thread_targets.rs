@@ -163,9 +163,19 @@ impl TeamManager {
         team_id: &str,
         created_by_actor_id: &str,
     ) -> anyhow::Result<(String, String)> {
-        let mut tx = self.db.begin().await?;
-        if let Some(existing) = fetch_canonical_shared_thread_target(&mut *tx, team_id).await? {
-            tx.commit().await?;
+        let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
+        let target =
+            Self::ensure_shared_thread_target_tx(&mut tx, team_id, created_by_actor_id).await?;
+        tx.commit().await?;
+        Ok(target)
+    }
+
+    pub(super) async fn ensure_shared_thread_target_tx(
+        tx: &mut sqlx::Transaction<'_, Sqlite>,
+        team_id: &str,
+        created_by_actor_id: &str,
+    ) -> anyhow::Result<(String, String)> {
+        if let Some(existing) = fetch_canonical_shared_thread_target(&mut **tx, team_id).await? {
             return Ok((existing.task_id, existing.conversation_id));
         }
 
@@ -203,7 +213,7 @@ impl TeamManager {
         .bind(context_json)
         .bind(now)
         .bind(now)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
 
         sqlx::query(
@@ -226,9 +236,8 @@ impl TeamManager {
         .bind(TEAM_SHARED_THREAD_TITLE)
         .bind(now)
         .bind(now)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
-        tx.commit().await?;
         Ok((task_id, conversation_id))
     }
 

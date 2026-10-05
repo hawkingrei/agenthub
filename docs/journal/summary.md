@@ -29,6 +29,8 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-10-06: Native semantic outcomes](2026-10-06-native-semantic-outcomes.md): guarded activation delivery, strict event/ACK correlation and atomic clarification reply waits.
+
 - [2026-10-05: Native capability rollout](2026-10-05-native-capability-rollout.md): reopen controlled tool sources, semantic outcomes, cross-process continuity, durable approval recovery and assembled acceptance after the existing integration merged.
 
 - [2026-10-03: Mailbox ACK writer contention](2026-10-03-mailbox-ack-writer-contention.md): acquire write ownership before the ACK read snapshot and retain idempotency under concurrent WAL writers.

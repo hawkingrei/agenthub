@@ -257,7 +257,7 @@ provider raw JSON must stay redacted from diagnostics metadata by default.
   timeout.
 
 The compatible protocol fixture is pinned to upstream commit
-`460778e10c2ce01f2dc6b6de57d4d25c609f9c40`. Controlled-source delivery is tracked in
+`5585583a6674cb0d6ac36d5be98744dd75589871`. Controlled-source delivery is tracked in
 [the prerequisite PR](https://github.com/linkerdog/rara/pull/1058).
 Package version `0.0.22` alone does not identify this protocol. The version 1 envelope
 uses `type`/`payload`; the handshake carries `runtime_id`, `runtime_version`,
@@ -348,7 +348,7 @@ preserves the proxy's uncertain operation record and does not authorize retries.
 Semantic shutdown must retire source children; the outer supervisor independently
 proves process-tree cleanup before replacement execution.
 
-The `native-loop-v3` source contract is part of the configuration digest and entry version.
+The `native-loop-v4` source contract is part of the configuration digest and entry version.
 It keeps activation, local launch, native runtime and native session identities distinct;
 native subagents receive no independent outer membership, mailbox or execution credentials.
 An ordinary completed turn is insufficient to finish an activation: the existing structured
@@ -356,14 +356,15 @@ finish service owns that outcome. A terminal turn without an outcome becomes int
 only after existing supervised cleanup. A live input/approval wait keeps its callback owner;
 canceling that wait may end the native turn through input-discarded alone.
 
-The pinned build has no cross-process resume, durable approval recovery or semantic-guard
-event contract. Resume policies therefore fail preflight. MCP/App/Mem launch validation
+The pinned build supports typed semantic guard input/events. It still has no cross-process
+resume or durable approval recovery. Resume policies therefore fail preflight. MCP/App/Mem launch validation
 reuses the shared binding rules; older runtimes without the negotiated source controls
 fail startup before the entry prompt. Loop launches disable ambient extension discovery
 and native memory facilities. They never replace missing controlled sources with ambient configuration.
 Card/task source binding, stable task memory prefixes and activation trace enrichment are
-implemented. Semantic outcome adaptation and assembled configured-provider acceptance
-remain unfinished.
+implemented. Typed semantic declines map through the existing canonical finish transaction;
+clarification questions and reply waits commit together. Assembled configured-provider acceptance
+remains unfinished.
 
 ### 2) Configuration
 
@@ -722,6 +723,48 @@ Guardrails:
 - For local Rara agent teams that are not attached to an AgentHub Team, the same guard may validate
   against Rara's own internal agent cards, but AgentHub does not interpret those internal cards as
   AgentHub Team membership.
+
+### Guarded Activation Delivery
+
+Native loop startup negotiates `input.submit_guarded_prompt` and the
+`semantic_guard` event family before creating a session. The outer adapter supplies
+bounded, launch-pinned role/Card/work context from the canonical activation sources.
+A guard sees addressed canonical task/message data; it must not classify only the
+generic loop-entry instruction or consult another member's history. Oversized
+context is rejected explicitly rather than silently truncated into a verdict. The adapter
+admits at most 256 work sources; role text is bounded to 4 KiB, Card to 8 KiB, and
+work/prompt text to 64 KiB each.
+
+The runtime emits a strict `compatible`, `mismatch`, or `needs_clarification`
+decision before ordinary worker execution. Reasons and questions are nonempty,
+control-free text of at most 1024 UTF-8 bytes. Invalid/unavailable classification
+retains the runtime's advisory fallback and never fabricates a business verdict.
+Ordinary ACP activation delivery and unguarded interactive prompts retain their
+existing behavior.
+
+The adapter persists the ordered semantic event as scoped runtime history before
+observing its effect. It accepts a decline only after the same runtime/session/turn
+has a normal terminal event and a unique prior decision from runtime provenance. The terminal
+turn must match the persisted ACK for this activation's exact entry request ID. Cancellation, interruption,
+failure, a replay gap, a conflicting decision, or worker activity after a decline
+cannot establish an outcome. Safe reasons stay in this durable history, outside
+content-free telemetry; activation history already joins the owning local session.
+
+A current activation fence maps mismatch to `no_actionable_work`. Clarification maps
+to `waiting` with `input`, a canonical conversation question and a one-shot thread
+reply registration in one SQLite transaction. The ordinary finish receipt remains
+the canonical outcome authority; an existing finish prevents all semantic side
+effects. This reuses the conversation body outbox and scheduler observation latch,
+without changing the `LoopOutcome` wire format or adding a second delivery journal.
+
+A clarification uses the unique task conversation when unambiguous, otherwise the
+canonical shared Team conversation. The question is a new reply root. Its registration
+waits for a later reply to that exact root and retains activation provenance. A reply
+committed immediately after the question cannot be lost; replacement execution still
+waits for verified cleanup of the original process. Duplicate or stale decisions
+cannot publish another question or overwrite a newer generation's result. If the daemon stops
+before this control-store transaction commits, recovery keeps the activation interrupted with
+its runtime history; it does not infer a finish or republish a question from a bare reason string.
 
 ### 10) Remote Nodes
 

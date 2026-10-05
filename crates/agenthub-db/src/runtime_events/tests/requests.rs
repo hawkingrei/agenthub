@@ -26,6 +26,56 @@ fn accepted(session: &str) -> RuntimeRequestAck {
 }
 
 #[tokio::test]
+async fn guarded_prompt_receipt_requires_an_owned_admitted_turn_and_never_queues() {
+    let fixture = Fixture::new().await;
+    fixture
+        .owner
+        .prepare_input_request(
+            intent("guard", RuntimeRequestKind::GuardedPrompt),
+            1,
+            history("guard-attempt"),
+        )
+        .await
+        .unwrap();
+    let permit = fixture.owner.mark_request_sent("guard", 2).await.unwrap();
+    for ack in [
+        RuntimeRequestAck::Accepted {
+            session_id: "native".into(),
+            turn_id: None,
+            last_sequence: Some(2),
+        },
+        accepted("foreign"),
+        RuntimeRequestAck::Queued {
+            session_id: "native".into(),
+        },
+    ] {
+        assert!(
+            fixture
+                .owner
+                .record_request_ack(&permit, ack, 3)
+                .await
+                .is_err()
+        );
+    }
+    fixture
+        .owner
+        .record_request_ack(&permit, accepted("native"), 3)
+        .await
+        .unwrap();
+    fixture.owner.close(4).await.unwrap();
+    let receipt = fixture
+        .owner
+        .request_receipt("guard")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(receipt.kind, RuntimeRequestKind::GuardedPrompt);
+    assert_eq!(receipt.status, RuntimeRequestStatus::Accepted);
+    assert_eq!(receipt.ack, Some(accepted("native")));
+    assert_eq!(fixture.history_count().await, 1);
+}
+
+#[tokio::test]
 async fn source_receipts_require_owned_session_ack_without_turn_or_queue() {
     let fixture = Fixture::new().await;
     for (id, kind) in [
