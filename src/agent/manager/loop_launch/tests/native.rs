@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 use super::*;
 
 mod input;
+mod semantic_guard;
 mod sources;
 mod transport;
 
@@ -24,7 +25,7 @@ def event(family, kind, payload, turn=None):
         operation['payload'] = payload
     emit('event', {'runtime_id':runtime, 'session_id':native, 'event':{
         'event_id':'event-' + str(sequence), 'sequence':sequence, 'turn_id':turn,
-        'provenance':{'session_id':native},
+        'provenance':{'session_id':native,'controller':'runtime','trust':'trusted','authorship':'runtime'},
         'event':{'type':family, 'payload':operation}}})
 def ack(request_id, turn=None):
     emit('ack', {'runtime_id':runtime, 'request_id':request_id, 'result':{
@@ -72,10 +73,28 @@ for line in sys.stdin:
         assert operation == 'register'
         event('mcp', 'source_registered', {'source_id':body['source_id'], 'tool_names':[]})
         ack(rid)
-    elif operation == 'submit_user_prompt':
+    elif operation in ['submit_user_prompt', 'submit_guarded_prompt']:
         turn = str(uuid.uuid4())
         event('session', 'turn_started', None, turn)
-        ack(rid, turn)
+        if config['mode'] not in ['guard-late-ack', 'guard-foreign-ack']:
+            ack(rid, turn)
+        if operation == 'submit_guarded_prompt':
+            assert body['context']['role'] in ['worker', 'coordinator']
+            assert json.loads(body['context']['card'])
+            assert json.loads(body['context']['work'])['sources']
+            if config['mode'] in ['guard-mismatch', 'guard-late-ack', 'guard-foreign-ack']:
+                event('semantic_guard', 'decided', {'decision':{'outcome':'mismatch','reason':'Different role'}}, turn)
+                event('session', 'turn_finished', {'reason':'completed'}, turn)
+                if config['mode'] == 'guard-late-ack':
+                    ack(rid, turn)
+                elif config['mode'] == 'guard-foreign-ack':
+                    ack(rid, 'foreign-turn')
+                continue
+            if config['mode'] == 'guard-clarification':
+                event('semantic_guard', 'decided', {'decision':{'outcome':'needs_clarification','reason':'Missing target','question':'Which target?'}}, turn)
+                event('session', 'turn_finished', {'reason':'completed'}, turn)
+                continue
+            event('semantic_guard', 'decided', {'decision':{'outcome':'compatible'}}, turn)
         if config['mode'] == 'waiting':
             event('input', 'requested', {'pending':{'turn_id':turn, 'kind':{'type':'user','payload':{'question':'Choose scope', 'options':[], 'note':None}}}}, turn)
             event('session', 'turn_finished', {'reason':'awaiting_input'}, turn)
@@ -123,13 +142,13 @@ async fn fixture(mode: &str) -> Fixture {
         "request_families": ["session", "input", "prompt_source", "skill_source", "server"],
         "request_methods": [
             "session.create", "session.query_state", "session.cancel", "session.interrupt",
-            "input.submit_prompt", "input.submit_follow_up", "input.answer_user",
+            "input.submit_prompt", "input.submit_guarded_prompt", "input.submit_follow_up", "input.answer_user",
             "input.answer_plan", "input.answer_shell", "prompt_source.register",
             "skill_source.register", "server.shutdown"
         ],
         "event_families": [
             "session", "input", "assistant", "tool", "approval", "plan", "warning", "error",
-            "prompt_source", "skill"
+            "prompt_source", "skill", "semantic_guard"
         ],
         "capabilities": {
             "graceful_shutdown": true,
@@ -227,7 +246,7 @@ async fn native_loop_fresh_follow_up_pins_one_role_entry_and_keeps_mailbox_ident
             .iter()
             .filter(
                 |request| request["payload"]["envelope"]["request"]["payload"]["type"]
-                    == "submit_user_prompt"
+                    == "submit_guarded_prompt"
             )
             .count(),
         2
@@ -343,7 +362,7 @@ async fn native_loop_rejected_source_prevents_entry_and_cleans_the_owned_executo
         .await
         .unwrap();
     let log = std::fs::read_to_string(fixture.directory.join("native-requests.jsonl")).unwrap();
-    assert!(!log.contains("submit_user_prompt"));
+    assert!(!log.contains("submit_guarded_prompt"));
     assert_eq!(log.lines().count(), 2);
     assert!(
         LoopStore::new(fixture.state.db.clone())

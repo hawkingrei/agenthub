@@ -8,6 +8,7 @@ use super::{RuntimeEventError, RuntimeEventStore, sequence, validate_id};
 pub enum RuntimeRequestKind {
     CreateSession,
     Prompt,
+    GuardedPrompt,
     FollowUp,
     Cancel,
     Interrupt,
@@ -139,6 +140,7 @@ impl RuntimeEventStore {
             matches!(
                 intent.kind,
                 RuntimeRequestKind::Prompt
+                    | RuntimeRequestKind::GuardedPrompt
                     | RuntimeRequestKind::FollowUp
                     | RuntimeRequestKind::UserAnswer
             ),
@@ -310,7 +312,9 @@ impl RuntimeEventStore {
                     RuntimeRequestKind::UserAnswer
                     | RuntimeRequestKind::PlanAnswer
                     | RuntimeRequestKind::ShellAnswer => turn_id.is_some(),
-                    RuntimeRequestKind::Prompt | RuntimeRequestKind::FollowUp => turn_id.is_some(),
+                    RuntimeRequestKind::Prompt
+                    | RuntimeRequestKind::GuardedPrompt
+                    | RuntimeRequestKind::FollowUp => turn_id.is_some(),
                 };
                 anyhow::ensure!(valid_turn, RuntimeEventError::InvalidTarget);
                 (RuntimeRequestStatus::Accepted, Some(session_id))

@@ -69,7 +69,18 @@ impl RaraHandle {
                         state.pending.is_none(),
                         AgentSendInputError::NativeInputRequired
                     );
-                    if matches!(
+                    if let Some(guard) = state.guard.as_ref().filter(|_| !state.input_attempted) {
+                        anyhow::ensure!(
+                            id == guard.request_id
+                                && origin.is_none()
+                                && matches!(state.phase, SessionPhase::Idle),
+                            "native guarded entry requires an idle session"
+                        );
+                        ControlRequest::GuardedPrompt(agenthub_rara::GuardedPrompt {
+                            prompt: text.clone(),
+                            context: guard.context.clone(),
+                        })
+                    } else if matches!(
                         state.phase,
                         SessionPhase::Running { .. } | SessionPhase::Cancelling { .. }
                     ) || origin.is_some()
@@ -154,6 +165,17 @@ impl RaraHandle {
         };
         if let Ok(ack) = &result {
             self.record_ack_cursor(ack);
+            if let (
+                RuntimeRequestAck::Accepted {
+                    turn_id: Some(turn),
+                    ..
+                },
+                ControlRequest::GuardedPrompt(_),
+            ) = (ack, &request)
+                && let Some(guard) = &mut self.state.write().await.guard
+            {
+                guard.accepted_turn = Some(turn.clone());
+            }
             if let (
                 RuntimeRequestAck::Accepted { .. },
                 ControlRequest::UserAnswer { turn_id, .. },

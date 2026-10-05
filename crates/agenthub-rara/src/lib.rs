@@ -7,6 +7,7 @@ mod framing;
 mod handshake;
 mod launch;
 mod protocol;
+mod semantic_guard;
 mod source;
 
 pub use connection::{
@@ -25,12 +26,16 @@ pub use protocol::{
     Acknowledgement, ClientFrame, ControlEnvelope, EventFrame, ProtocolError, Provenance,
     RejectionCode, ReplayGap, RequestResult, RuntimeEvent, ServerFrame,
 };
+pub use semantic_guard::{
+    GuardedPrompt, SemanticGuardContext, SemanticGuardDecision, SemanticGuardEvent,
+    SemanticGuardFailure,
+};
 pub use source::{McpSource, SourceRegistration};
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const TRANSPORT: &str = "stdio-jsonl";
 pub const MAX_FRAME_BYTES: usize = 1_048_576;
-pub const PINNED_UPSTREAM_REVISION: &str = "460778e10c2ce01f2dc6b6de57d4d25c609f9c40";
+pub const PINNED_UPSTREAM_REVISION: &str = "5585583a6674cb0d6ac36d5be98744dd75589871";
 
 #[cfg(test)]
 mod tests;

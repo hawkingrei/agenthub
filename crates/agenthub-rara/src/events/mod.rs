@@ -1,5 +1,8 @@
 mod digest;
 mod native;
+mod semantic_guard;
+#[cfg(test)]
+mod semantic_guard_tests;
 mod telemetry;
 #[cfg(test)]
 mod tests;
@@ -37,6 +40,7 @@ pub enum EventEffect {
     TurnEnded {
         turn_id: String,
         outcome: TurnEnd,
+        semantic: Option<crate::SemanticGuardDecision>,
     },
     InputRequested {
         pending: PendingInput,
@@ -69,6 +73,7 @@ pub struct EventProjector {
     question_turn: Option<String>,
     pending_turn: Option<String>,
     active_turn: Option<String>,
+    guard: semantic_guard::GuardTracker,
     tools: BTreeMap<String, OpenTool>,
 }
 
@@ -105,6 +110,7 @@ impl EventProjector {
             question_turn: None,
             pending_turn: None,
             active_turn: None,
+            guard: semantic_guard::GuardTracker::default(),
             tools: BTreeMap::new(),
         })
     }
@@ -133,6 +139,7 @@ impl EventProjector {
         if !matches!(event, NativeEvent::Assistant(_)) {
             self.chunk = None;
         }
+        let semantic = self.guard.observe(frame, &event)?;
         let mut effect = EventEffect::None;
         match event {
             NativeEvent::Assistant(event) => {
@@ -143,6 +150,9 @@ impl EventProjector {
             }
             NativeEvent::Session(event) => self.session(frame, event, &mut history, &mut effect)?,
             NativeEvent::Input(event) => self.input(frame, event, &mut history, &mut effect)?,
+            NativeEvent::SemanticGuard(guard) => {
+                history.push(update(json!({"event":"semantic_guard", "guard":guard})));
+            }
             NativeEvent::Approval(ApprovalEvent::Requested { approval_id, kind }) => {
                 validate_id(&approval_id)?;
                 validate_label(&kind)?;
@@ -227,6 +237,12 @@ impl EventProjector {
             | NativeEvent::Extension(payload) => {
                 history.push(update(telemetry::project(family, kind, &payload)?));
             }
+        }
+        if let EventEffect::TurnEnded {
+            semantic: result, ..
+        } = &mut effect
+        {
+            *result = semantic;
         }
         for entry in &mut history {
             if let ProjectedHistory::Conversation(value) = entry {
@@ -398,6 +414,7 @@ impl EventProjector {
                 *effect = EventEffect::TurnEnded {
                     turn_id: required_turn(frame)?,
                     outcome: TurnEnd::Finished { reason },
+                    semantic: None,
                 };
                 history.push(run_status(status));
             }
@@ -406,6 +423,7 @@ impl EventProjector {
                 self.retire_tools(&required_turn(frame)?, history);
                 *effect = EventEffect::TurnEnded {
                     turn_id: required_turn(frame)?,
+                    semantic: None,
                     outcome: if interrupted {
                         TurnEnd::Interrupted
                     } else {
@@ -420,6 +438,7 @@ impl EventProjector {
                 *effect = EventEffect::TurnEnded {
                     turn_id: required_turn(frame)?,
                     outcome: TurnEnd::Failed,
+                    semantic: None,
                 };
                 history.push(run_status("error"));
                 history.push(ProjectedHistory::System("Runtime turn failed.".into()));

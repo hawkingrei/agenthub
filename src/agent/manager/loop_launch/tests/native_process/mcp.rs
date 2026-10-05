@@ -353,6 +353,9 @@ async fn model(
     Json(request): Json<Value>,
 ) -> ([(&'static str, &'static str); 1], String) {
     state.requests.lock().unwrap().push(request.clone());
+    if let Some(response) = super::semantic_guard::compatible_response(&request) {
+        return response;
+    }
     if completed(&request, "app")
         && !state
             .revoked

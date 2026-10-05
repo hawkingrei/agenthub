@@ -416,7 +416,7 @@ impl AgentManager {
             .await?;
         let entry = self.loop_entry_with_mem(&reservation).await?;
         let entry = self
-            .prepare_loop_entry(&reservation, &context, entry)
+            .prepare_loop_entry(&teams, &reservation, &context, entry)
             .await?;
         let submission = format!(
             "loop-entry:{}:{}",
@@ -457,7 +457,21 @@ impl AgentManager {
                             && diagnostics.active_submission_ids.is_empty()
                             && diagnostics.active_prompt_count == 0)
                 }
-                AgentInput::Rara(runtime) => runtime.loop_turn_complete().await,
+                AgentInput::Rara(runtime) => {
+                    let completed = runtime.loop_turn_complete().await;
+                    if completed
+                        && let Some((decision, task_id)) = runtime.semantic_loop_outcome().await
+                    {
+                        teams
+                            .finish_native_semantic_guard(
+                                &reservation,
+                                &decision,
+                                task_id.as_deref(),
+                            )
+                            .await?;
+                    }
+                    completed
+                }
                 AgentInput::Stdin(_) => {
                     anyhow::bail!("loop provider does not expose turn lifecycle")
                 }

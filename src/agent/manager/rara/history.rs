@@ -75,6 +75,7 @@ impl AgentManager {
                 || !matches!(
                     receipt.kind,
                     RuntimeRequestKind::Prompt
+                        | RuntimeRequestKind::GuardedPrompt
                         | RuntimeRequestKind::FollowUp
                         | RuntimeRequestKind::UserAnswer
                 )

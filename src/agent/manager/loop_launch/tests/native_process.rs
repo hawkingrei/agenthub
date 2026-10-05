@@ -9,6 +9,7 @@ use super::*;
 
 mod cycle;
 mod mcp;
+mod semantic_guard;
 
 const CHILD_INSTRUCTION: &str =
     "native-loop-child-isolation: create a native private task and report";
@@ -231,7 +232,10 @@ async fn native_loop_process_dispatch_report_and_acceptance_survive_each_exit() 
     ] {
         let request = requests
             .iter()
-            .find(|request| request["messages"].to_string().contains(&activation.id))
+            .find(|request| {
+                !semantic_guard::is_guard_request(request)
+                    && request["messages"].to_string().contains(&activation.id)
+            })
             .expect("the native model receives the registered activation source");
         let messages = request["messages"].to_string();
         assert!(messages.contains(role));
@@ -349,7 +353,7 @@ async fn execute_pending(fixture: &Fixture, actor: &str) -> LoopActivation {
         history
             .receipts
             .iter()
-            .filter(|receipt| receipt.kind == RuntimeRequestKind::Prompt)
+            .filter(|receipt| receipt.kind == RuntimeRequestKind::GuardedPrompt)
             .count(),
         1
     );
@@ -364,6 +368,9 @@ async fn execute_pending(fixture: &Fixture, actor: &str) -> LoopActivation {
 }
 
 fn model_response(request: &Value, command: &str) -> ([(&'static str, &'static str); 1], String) {
+    if let Some(response) = semantic_guard::compatible_response(request) {
+        return response;
+    }
     let completed = |id| {
         request["messages"]
             .as_array()

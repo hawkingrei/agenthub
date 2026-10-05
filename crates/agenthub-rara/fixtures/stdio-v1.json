@@ -1,6 +1,6 @@
 {
-  "upstream_commit": "460778e10c2ce01f2dc6b6de57d4d25c609f9c40",
-  "binary_sha256": "2f50d4ea5f22e17420aa41f13fdad153673d992a472ad1927e163bf81996f97e",
+  "upstream_commit": "5585583a6674cb0d6ac36d5be98744dd75589871",
+  "binary_sha256": "dcf4639b05a51f274a210eb950e592c85564c554544370c3145e0e7708b7adc1",
   "frames": [
     {
       "type": "handshake",
@@ -24,6 +24,7 @@
           "session.cancel",
           "session.interrupt",
           "input.submit_prompt",
+          "input.submit_guarded_prompt",
           "input.submit_follow_up",
           "input.answer_user",
           "input.answer_plan",
@@ -41,6 +42,7 @@
           "server.shutdown"
         ],
         "event_families": [
+          "semantic_guard",
           "session",
           "input",
           "assistant",

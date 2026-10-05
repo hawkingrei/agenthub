@@ -289,6 +289,7 @@ fn method(frame: &ClientFrame) -> Result<&'static str, ConnectionError> {
         (Some("session"), Some("cancel_current_turn")) => Ok("session.cancel"),
         (Some("session"), Some("interrupt_current_turn")) => Ok("session.interrupt"),
         (Some("input"), Some("submit_user_prompt")) => Ok("input.submit_prompt"),
+        (Some("input"), Some("submit_guarded_prompt")) => Ok("input.submit_guarded_prompt"),
         (Some("input"), Some("submit_follow_up")) => Ok("input.submit_follow_up"),
         (Some("input"), Some("answer_pending_input")) => Ok("input.answer_user"),
         (Some("input"), Some("answer_plan_approval")) => Ok("input.answer_plan"),

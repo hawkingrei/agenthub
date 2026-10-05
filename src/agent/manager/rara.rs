@@ -23,7 +23,7 @@ mod session;
 pub use session::RaraHandle;
 
 const PROCESS_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
-pub(super) const LOOP_SOURCE_VERSION: &str = "native-loop-v3";
+pub(super) const LOOP_SOURCE_VERSION: &str = "native-loop-v4";
 
 #[cfg(all(test, unix))]
 mod tests;
@@ -133,6 +133,7 @@ impl AgentManager {
         )
         .await?;
         if self.has_loop_activation(agent_id).await {
+            agenthub_rara::GuardedPrompt::require_capability(client.handshake())?;
             client
                 .handshake()
                 .require_methods(&["prompt_source.register", "skill_source.register"])?;
