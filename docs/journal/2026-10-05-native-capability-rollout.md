@@ -115,13 +115,42 @@ Existing upstream discovery reuses the same connection and cleanup path.
 
 Evidence includes 12 focused tests with real stdio children and frame-boundary
 checks, focused warnings-denied Clippy and the upstream repository's all-target
-Clippy commit hook. Default Bazel validation timed out in dependency fetching
-before any compilation or test process; its integration result remains a CI gate.
+Clippy commit hook. Default local Bazel validation timed out in dependency fetching
+before any compilation or test process; the foundation PR's remote Bazel, build
+and Clippy checks subsequently passed. Its full test job failed the unchanged
+external-editor PTY input case on both attempts. That case passed once in local
+isolation; the CI failure remains unresolved and is a merge gate.
 
-This is a transport foundation only. The session registry, namespace admission,
-native tool invocation with session identity, source revocation and executable
-app-server control proof remain the next delivery boundary. The adapter pin and
-capability rejection remain unchanged until that boundary is qualified.
+This component is the transport foundation. The next component supplies the
+session registry and executable controls described below.
+
+## Controlled Session Checkpoint
+
+[Upstream PR #1058](https://github.com/linkerdog/rara/pull/1058), commit
+`aa3a6e927ed77ba787625497484a90f0ca0eaf4e`, adds explicit session-owned source
+registration, query and removal. It targets the foundation branch while #1057
+remains open, so the review diff contains only session integration.
+
+The session actor admits complete namespaced catalogues atomically, uses an
+explicit launch environment and workspace, and fences each call to the owning
+session. Removal invalidates retained tool handles before waiting for child
+retirement. Uncertain source cleanup blocks further admission and successful
+shutdown receipts. Dynamic sources require host opt-in and cannot widen frozen
+profiles or session-stable schemas; read-only modes do not grant execution
+authority based on source annotations.
+
+Evidence includes 7 focused source/native tests, 10 stdio tests, a dedicated
+read-only-mode test, all-target warnings-denied Clippy and formatting. The actual
+binary passed all 6 smoke scenarios, including a local provider calling a real
+controlled source and observing its retirement before semantic shutdown. These
+fixtures do not establish configured-provider acceptance.
+
+The main adapter still pins the earlier revision and retains its unsupported
+MCP-source preflight. The next change must negotiate the committed controls,
+register the already-authorized proxy mounts through durable receipts, and prove
+App/Mem isolation, revocation and uncertain-write behavior before removing that
+rejection. Cross-process continuity, semantic outcomes, approval persistence and
+assembled acceptance remain open.
 
 ## Validation
 
