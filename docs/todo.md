@@ -22,10 +22,24 @@ Checkpoint: [ACP rollout integration](journal/2026-09-21-acp-rollout-integration
 - [x] Land the follow-up excluding revoked sources from execution reads while retaining their
   history. Evidence: [revoked execution sources](journal/2026-09-27-loop-revoked-execution-sources.md).
 
-Native runtime acceptance and upstream prerequisites remain deferred. PR #1168 integrates the
-existing slices 16-18 with the current mainline; completing tool sources, semantic outcomes and
-approval persistence remains separate work, not a gate for this ACP rollout. Remote loop ownership,
-non-Linux guardians, standalone Mem scope, App authoring UI and cross-owner consent remain separate scope.
+PR #1168 merged the existing native slices 16-18 into main. All remaining local native runtime
+capabilities and upstream prerequisites are active again. The completed ACP rollout remains the
+integration baseline. Contract: [direct runtime integration](features/rara-direct-integration.md).
+Delivery order and acceptance: [native capability rollout](journal/2026-10-05-native-capability-rollout.md).
+
+- [ ] Add capability-negotiated, session-scoped MCP sources through the existing journaled proxy,
+  including App and Mem bindings, revocation, credential isolation and uncertain-write handling.
+- [ ] Map semantic guard outcomes into canonical loop outcomes and clarification waits without
+  treating an ordinary completed provider turn as a structured finish.
+- [ ] Support cross-process provider continuity with a new fenced activation, preserved task/IM
+  identity and verified old-owner cleanup before replacement execution.
+- [ ] Persist and recover pending approvals with exact ownership, explicit decision receipts and
+  no automatic replay of uncertain tool execution or approval answers.
+- [ ] Qualify the assembled path with the installed runtime and configured provider: controlled
+  tools, restart/resume, approval recovery, semantic outcomes and nested-subteam isolation.
+
+Remote loop ownership, non-Linux guardians, standalone Mem scope, App authoring UI and cross-owner
+consent remain separate scope.
 
 ## Release And Packaging
 
