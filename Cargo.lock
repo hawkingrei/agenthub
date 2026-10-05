@@ -747,7 +747,7 @@ version = "0.0.10"
 dependencies = [
  "anyhow",
  "arrow-array 59.3.0",
- "arrow-schema 59.3.0",
+ "arrow-schema 60.0.0",
  "async-trait",
  "futures",
  "lance-index",
@@ -1289,6 +1289,12 @@ name = "arrow-schema"
 version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10fab8d4563491417ba801fab29d205104d20d4bdf37bda6cd1cf425cff598cd"
+
+[[package]]
+name = "arrow-schema"
+version = "60.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f85a9a58cd03560526b0066487574aacb9008e413504fa0ee23d61141e96c338"
 
 [[package]]
 name = "arrow-select"
