@@ -147,7 +147,7 @@ for line in sys.stdin:
                 result = {'status': 'queued', 'session_id': native}
             else:
                 result = {'status': 'accepted', 'session_id': native, 'turn_id': 'turn-' + str(inputs), 'last_sequence': sequence}
-            question_answer = mode.startswith('input_question_') and operation == 'answer_pending_input'
+            question_answer = mode.startswith('input_question') and operation == 'answer_pending_input'
             if question_answer:
                 result['last_sequence'] = {'input_question_no_cursor': None,
                     'input_question_zero_cursor': 0}.get(mode, sequence)
@@ -159,7 +159,7 @@ for line in sys.stdin:
             if mode == 'input_ack_only':
                 continue
             if question_answer and result['status'] == 'accepted':
-                if mode != 'input_question_reject_once':
+                if mode in ('input_question_no_cursor', 'input_question_zero_cursor', 'input_question_stale_cursor'):
                     deadline = time.monotonic() + 10
                     while not (root / 'release-question-events').exists():
                         assert time.monotonic() < deadline
@@ -189,6 +189,11 @@ for line in sys.stdin:
                         'provenance': {'session_id': None}, 'event': {'type': 'input', 'payload': {'type': 'requested', 'payload': {
                             'pending': {'turn_id': 'turn-' + str(inputs), 'kind': {'type': 'user', 'payload': {
                                 'question': 'Choose a path', 'options': [['alpha', 'First path']], 'note': None}}}}}}}})
+                    sequence += 1
+                    emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+                        'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-' + str(inputs),
+                        'provenance': {'session_id': None}, 'event': {'type': 'session', 'payload': {
+                            'type': 'turn_finished', 'payload': {'reason': 'awaiting_input'}}}}})
                 if mode.startswith('permission_') and operation == 'submit_user_prompt':
                     kind = 'plan' if mode == 'permission_plan' else 'shell'
                     body = {'approval_id': 'approval-1', 'plan': 'Review the release'} if kind == 'plan' else {'approval_id': 'approval-1', 'request': {'command': 'echo fixture', 'justification': 'Fixture approval'}}
@@ -200,6 +205,11 @@ for line in sys.stdin:
                         emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
                             'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-1',
                             'provenance': {'session_id': None}, 'event': {'type': family, 'payload': payload}}})
+                    sequence += 1
+                    emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+                        'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-1',
+                        'provenance': {'session_id': None}, 'event': {'type': 'session', 'payload': {
+                            'type': 'turn_finished', 'payload': {'reason': 'awaiting_input'}}}}})
                     if mode == 'permission_drop':
                         while not (root / 'drop-permission').exists():
                             time.sleep(0.01)

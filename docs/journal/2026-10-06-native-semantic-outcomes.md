@@ -78,3 +78,18 @@ lib/tests Clippy denies warnings; formatting and 78 local documentation links ar
 - Continue cross-process continuity, durable approvals and installed-provider acceptance
   in the [active rollout](../todo.md).
 - Stable behavior is specified in [direct runtime integration](../features/rara-direct-integration.md).
+
+## CI Fixture Follow-Up
+
+The root Bazel suite exposed two question-response fixture failures. The fake peer
+omitted `turn_finished(awaiting_input)` after publishing a wait, then emitted a
+second `turn_started` for the answer. The semantic tracker correctly rejected that
+overlapping-turn sequence. The peer now closes question and approval turns before
+starting answers, and ordinary question answers emit their matching `input.answered`.
+The duplicate-answer regression retains its ACK-versus-committed-events assertion
+with the additional legitimate terminal event in the prefix. Production validation
+is unchanged. `cargo test --locked --lib agent::manager::rara::tests::` passes all
+34 applicable manager tests, with two real-provider cases intentionally ignored.
+The final cursor assertion waits for the first turn's committed terminal event;
+it cannot race that legitimate prefix against the withheld answer events. The
+embedded Python peer also passes a syntax check.
