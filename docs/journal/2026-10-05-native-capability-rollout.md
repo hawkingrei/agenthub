@@ -100,6 +100,29 @@ history after browser/process exit, and keep nested subteams inside the outer ac
 Record the exact binary revision, provider/model, test mode and evidence; deterministic fixtures do
 not by themselves establish configured-provider acceptance.
 
+## Controlled Connection Checkpoint
+
+The first implementation component is published in
+[upstream PR #1057](https://github.com/linkerdog/rara/pull/1057), commit
+`457fafeac07a55ad7681ac305b319154043fb2f0`, based on upstream main
+`1c063f4e9b474473a259af2f544fc786dfd86de4`. An isolated checkout preserves the
+independent image-input work.
+
+The component owns a callable stdio connection, bounds raw incoming frames and
+complete catalogue discovery, sends one request without automatic SDK retries,
+and explicitly reaps its direct child. Interrupted retirement retains uncertainty.
+Existing upstream discovery reuses the same connection and cleanup path.
+
+Evidence includes 12 focused tests with real stdio children and frame-boundary
+checks, focused warnings-denied Clippy and the upstream repository's all-target
+Clippy commit hook. Default Bazel validation timed out in dependency fetching
+before any compilation or test process; its integration result remains a CI gate.
+
+This is a transport foundation only. The session registry, namespace admission,
+native tool invocation with session identity, source revocation and executable
+app-server control proof remain the next delivery boundary. The adapter pin and
+capability rejection remain unchanged until that boundary is qualified.
+
 ## Validation
 
 This checkpoint changes scope and acceptance documentation. It does not modify runtime behavior,
