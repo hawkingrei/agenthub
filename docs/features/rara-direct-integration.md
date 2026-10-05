@@ -23,9 +23,9 @@ are integrated. Authorized receipt/cursor history remains available after exit, 
 retires abandoned transport ownership. Fresh local Linux loop activations are admitted through
 the shared scheduler and supervised launch/cleanup path, with prompt/skill-source capability
 checks before entry. Cross-process resume, controlled MCP/App/Mem tool sources, semantic outcome
-mapping and durable approval recovery remain deferred gates tracked in
-[the transition TODO](../todo.md). Remote placement, legacy Team sessions and legacy idle loops
-remain rejected.
+mapping and durable approval recovery are active remaining requirements tracked in
+[the transition TODO](../todo.md). They remain capability-gated until implemented and qualified.
+Remote placement, legacy Team sessions and legacy idle loops remain rejected.
 
 The broader integration contract covers:
 
@@ -52,19 +52,20 @@ The broader integration contract covers:
 
 Rara direct integration participates in the [agent loop runtime](agent-loop-runtime.md) as one
 provider adapter behind the shared scheduler. Fresh local Linux activations use the shared
-reservation, launch, structured finish and supervised cleanup lifecycle. The deferred capability
-contracts below do not enable resume, controlled tool sources or durable approval recovery.
+reservation, launch, structured finish and supervised cleanup lifecycle. The remaining capability
+contracts below require implementation and explicit negotiation before resume, controlled tool
+sources or durable approval recovery can be enabled.
 
 - One admitted activation delivers one configured role prompt through `SubmitUserPrompt`, or
   `SubmitFollowUp` when the adapter reports a reusable live turn. Rara-internal reasoning and tool
   rounds stay inside that activation.
 - Activation identity is AgentHub-owned and distinct from both `agent_sessions.id` and Rara
-  thread/session continuity. Resuming provider continuity in a later activation remains deferred;
-  losing it must not lose canonical task, IM, or outcome state.
+  thread/session continuity. Resuming provider continuity in a later activation remains to be
+  implemented; losing it must not lose canonical task, IM, or outcome state.
 - Handshake capabilities gate lifecycle claims. The scheduler must not record a durable wait for a
   Rara approval unless the handshake advertises approval persistence across process exit;
   otherwise Rara approvals keep the live-callback semantics of the runtime approval contract.
-- Semantic guard translation remains a deferred contract: `mismatch` must record a
+- Semantic guard translation is an active remaining requirement: `mismatch` must record a
   no-actionable-work outcome with the guard's safe reason, and `needs_clarification` must record
   a wait on the clarification reply. Neither is a crash, a cancellation, or a permission denial.
 - A nested Rara subteam executes inside the outer member's activation. Internal subagents do not
@@ -757,6 +758,16 @@ Phase 1 implementation validation:
   output, and shuts down cleanly
 - remote-node smoke test after local mode is stable
 
+Remaining local capability acceptance:
+
+| Capability | Required evidence before enabling it |
+| --- | --- |
+| Controlled MCP/App/Mem sources | A negotiated source reaches the real native tool registry through the existing proxy; foreign scope, revoked bindings and ambient source discovery remain rejected, and uncertain writes are not replayed. |
+| Semantic outcomes | `compatible`, `mismatch` and `needs_clarification` produce distinct canonical outcomes under the current activation fence; ordinary provider completion cannot substitute for structured finish. |
+| Cross-process continuity | Restart into a new local launch preserves provider continuity and canonical task/IM identity only after verified old-owner cleanup; incompatible continuity cannot silently create a fresh session under a resume policy. |
+| Durable approvals | A committed pending approval survives process loss and binds its answer to the recovered owned interaction; stale, duplicate, rejected and uncertain decisions cannot grant replacement execution. |
+| Assembled runtime | Installed-binary and configured-provider evidence covers these capabilities together, browser-independent execution, retained history and nested-subteam identity isolation; fixture-only evidence is identified separately. |
+
 ## Operational Notes
 
 - Use direct app-server integration only. Do not use `rara acp` for AgentHub-owned Rara integration.
@@ -793,13 +804,13 @@ Phase 1 implementation validation:
 
 ## Source Journals
 
+- [2026-10-05: Native capability rollout](../journal/2026-10-05-native-capability-rollout.md)
 - [2026-09-18: Direct runtime loop activation](../journal/2026-09-18-native-loop-activation.md)
 - [2026-09-18: Direct runtime event storage](../journal/2026-09-18-runtime-event-storage.md)
 - [2026-09-18: Direct runtime transport](../journal/2026-09-18-rara-local-transport.md)
 
 - [2026-06-06-rara-app-server-phase1-contract.md](../journal/2026-06-06-rara-app-server-phase1-contract.md)
 - [2026-06-08-rara-team-modes-requirements.md](../journal/2026-06-08-rara-team-modes-requirements.md)
-- The first implementation PR should add or update a dated journal that links back to this spec.
 
 ## External References
 
