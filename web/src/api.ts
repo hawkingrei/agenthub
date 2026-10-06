@@ -1599,14 +1599,16 @@ export const api = {
     id: string,
     limit = 500,
     sessionId?: string,
-    beforeId?: number | null
+    beforeId?: number | null,
+    signal?: AbortSignal
   ) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (sessionId) params.set("session_id", sessionId);
     if (beforeId != null) params.set("before_id", String(beforeId));
     return apiFetch<AgentEvent[]>(
       `/api/agents/${encodePathSegment(id)}/events?${params.toString()}`,
-      token
+      token,
+      { signal }
     );
   },
   getAgentEvent: (token: string, id: string, eventId: number) =>
