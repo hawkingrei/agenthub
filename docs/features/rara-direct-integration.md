@@ -24,7 +24,8 @@ retires abandoned transport ownership. Fresh local Linux loop activations are ad
 the shared scheduler and supervised launch/cleanup path, with prompt/skill-source capability
 checks before entry. Controlled MCP/App/Mem sources and semantic outcome mapping are implemented
 behind negotiated capabilities. Local loop resume and durable approval recovery use current-owner
-reentry and explicit reconciliation. Standalone continuity, upstream publication and assembled
+reentry and explicit reconciliation. Local Linux standalone sessions use independent durable
+owners and explicit fresh/resume policy. Upstream publication and assembled
 configured-provider qualification remain active requirements tracked in
 [the transition TODO](../todo.md).
 Remote placement, legacy Team sessions and legacy idle loops remain rejected.
@@ -191,8 +192,8 @@ AgentHub and Rara session identities must stay separate:
 - `agent_sessions.id` is AgentHub's per-launch runtime/audit identifier.
 - AgentHub persistent provider continuity should store Rara's thread/session identity separately.
 - Rara's thread id must not replace AgentHub's agent id, actor id, Team member id, or session id.
-- Force-new-session semantics clear Rara continuity intentionally; ordinary AgentHub restart should
-  attempt to resume the stored Rara continuity id when the adapter reports it is reusable.
+- Force-new-session semantics clear Rara continuity intentionally. A launch configured for resume
+  uses the stored native identity only when its ownership and compatibility checks pass.
 
 Loop continuity uses a separate durable binding, scoped by actor and Team. Its configuration
 digest includes the canonical workspace, role/Card, prompt and tool configuration, native
@@ -227,6 +228,35 @@ cannot be treated as idle or authorize replay of an earlier decision. Resume lau
 opening a conversation. A previously idle observation cannot narrow this requirement because
 the durable checkpoint may contain a later unresolved turn. Fresh policy keeps its existing
 capability requirements.
+
+Standalone Linux launches use `native_execution_owners`, not synthetic Team reservations.
+Every launch reserves an actor/local-session/daemon/generation identity before spawning and
+commits guarded execution authorization while holding its inherited guardian witness. Retired
+owners remain as cleanup evidence and preserve monotonic generations. A prepared, unstarted
+reservation can be retired conditionally; guarded owners require the exact exclusive witness
+proving no process started or every descendant was reaped. Closing receipts, marking a local
+session ended, elapsed time and a missing process handle are not cleanup evidence. Startup does
+not automatically restart standalone work. A later explicit launch recovers only verified owners.
+Standalone and loop reservations exclude each other atomically; active standalone ownership
+also blocks workspace/membership changes and identity deletion.
+
+`native_standalone_conversations` binds the provider identity separately. Its digest includes the
+effective canonical workspace, configured binary/provider/model and negotiated runtime profile.
+It uses the same opening-intent, exact accepted receipt and closed-owner repair requirements.
+Unknown opening results and changed configuration under resume remain blocked without fallback.
+The standalone policy defaults to `fresh`; `resume` requires the complete recovery capability set
+before any event-owner or conversation opening. Non-Linux standalone fresh compatibility remains
+available, while standalone resume requires the Linux guardian. Existing unmanaged history is
+never inferred to be a resumable binding.
+
+Restored standalone approvals are published under the new local owner; input, approval answers,
+turn controls and recovery controls revalidate that exact guarded owner and standalone scope.
+They carry no Team identity or execution credential. Recovery confirmation leaves the session idle
+for a new explicit instruction. `POST /api/agents/{id}/acp/session/clear` selects the native provider
+when omitted for a native agent, requires `RuntimeOperate`, and rejects an unretired writer with a
+conflict. It clears only the conversation binding after verified cleanup, preserves generation and
+history, and never implicitly stops a live process. Explicit actor deletion follows existing history
+deletion semantics after retirement; conversation reset alone cannot erase cleanup obligations.
 
 Restored interaction entry must register current sources before accepting an answer.
 The tool-free `session.evaluate_reentry` control targets the exact waiting turn or
@@ -474,6 +504,7 @@ default_provider = "deepseek"
 default_model = "deepseek-chat"
 startup_timeout_seconds = 120
 shutdown_timeout_seconds = 30
+standalone_session_policy = "fresh"
 ```
 
 The exact field names can evolve during implementation, but the boundary is stable:
@@ -485,6 +516,10 @@ The exact field names can evolve during implementation, but the boundary is stab
 
 The binary defaults to `rara`; provider/model defaults are optional and leave
 runtime-owned credential resolution intact. Only `stdio-jsonl` is accepted.
+`standalone_session_policy` accepts `fresh` (default) or `resume`; it does not override a
+Team loop's separately configured session policy. Select resume only for a runtime with durable
+recovery support. Configuration or effective workspace changes require explicit fresh selection
+or a stopped-session continuity reset before another resume attempt.
 Timeouts must be 1-600 seconds. Explicit overrides are
 `AGENTHUB_RARA_BINARY`, `AGENTHUB_RARA_PROVIDER`, `AGENTHUB_RARA_MODEL`,
 `AGENTHUB_RARA_STARTUP_TIMEOUT_SECONDS` and
@@ -898,6 +933,15 @@ Phase 0 spec validation:
 Phase 1 implementation validation:
 
 - focused AgentHub config tests for Rara-specific config parsing and environment overrides
+- standalone SQLite migration/owner races, exact guardian retirement, loop admission exclusion,
+  opening ambiguity/repair and reset authorization; actual native process history/approval/recovery
+  checks across a reopened database and new manager
+- standalone and Team browser recovery against real API/SSE handlers and a native process:
+  confirmation sends no input or model request, explicit subsequent input executes once, and refresh
+  preserves the response and cleared recovery state; qualify configured providers separately
+- opt-in configured-provider standalone checks for actual assistant recall after restart, approval
+  callback replacement and uncertain-effect reconciliation; private explicit credentials and exact
+  controlled-command approval, separately identified from installed-producer and Team qualification
 - provider adapter unit tests for app-server handshake and capability negotiation
 - input mapping tests for submit, follow-up, pending answer, approval, cancel, and interrupt
 - request ack tests for accepted, queued, rejected, unknown-before-ack, and idempotent retry
@@ -965,6 +1009,7 @@ Remaining local capability acceptance:
 
 ## Source Journals
 
+- [2026-10-07: Standalone native continuity](../journal/2026-10-07-native-standalone-continuity.md)
 - [2026-10-07: Native resume acceptance](../journal/2026-10-07-native-resume-acceptance.md)
 
 - [2026-10-07: Native opening reconciliation](../journal/2026-10-07-native-opening-reconciliation.md)

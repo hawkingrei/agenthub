@@ -22,6 +22,7 @@ pub(super) use loop_activation::NativeLoopSources;
 pub(super) use loop_context::NativeLoopContext;
 mod receipts;
 mod session;
+mod standalone;
 pub use session::RaraHandle;
 
 const PROCESS_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
@@ -34,6 +35,7 @@ pub(super) struct RaraPipes {
     pub child: SharedSupervisedChild,
     pub stdout: ChildStdout,
     pub stdin: ChildStdin,
+    pub workspace: std::path::PathBuf,
 }
 
 #[derive(serde::Serialize)]
@@ -206,6 +208,8 @@ impl AgentManager {
             if has_mcp_sources {
                 agenthub_rara::McpSource::require_capability(client.handshake())?;
             }
+        } else if config.standalone_session_policy == agenthub_config::RaraSessionPolicy::Resume {
+            client.handshake().require_durable_resume()?;
         }
         let store = agenthub_db::runtime_events::RuntimeEventStore::bind(
             self.event_dbs.pool_for_agent(agent_id).await?,
@@ -220,6 +224,7 @@ impl AgentManager {
             agent_id,
             output_tx,
             config,
+            &pipes.workspace,
         )
         .await;
         let handle = match startup {
@@ -264,6 +269,9 @@ impl AgentManager {
                         .cleanup_observed_session(&agent_id, &session_id, &pipes.child)
                         .await
                         .context("failed to clean direct runtime after transport loss")?;
+                    manager
+                        .cleanup_standalone_native_execution(&agent_id, Some(&session_id))
+                        .await?;
                     let current = {
                         let handles = manager.inner.read().await;
                         Self::handle_matches_session(handles.get(&agent_id), &session_id)

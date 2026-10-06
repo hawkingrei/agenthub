@@ -15,6 +15,8 @@ mod projection;
 mod questions;
 mod recovery;
 mod sources;
+#[cfg(target_os = "linux")]
+mod standalone;
 
 const PEER: &str = r#"#!/usr/bin/env python3
 import json, os, pathlib, signal, subprocess, sys, time
@@ -277,6 +279,10 @@ impl Fixture {
 
     async fn new(scenario: &str) -> Self {
         let state = crate::api::team_tests::build_test_state().await;
+        Self::with_state(scenario, state).await
+    }
+
+    async fn with_state(scenario: &str, state: crate::state::AppState) -> Self {
         let directory =
             std::env::temp_dir().join(format!("direct-runtime-test-{}", Uuid::new_v4()));
         std::fs::create_dir(&directory).unwrap();
@@ -333,6 +339,13 @@ impl Fixture {
         .await
         .unwrap();
         assert_eq!(running, 0);
+        assert!(
+            agenthub_db::native_sessions::NativeSessionStore::new(self.manager.db.clone())
+                .active_owner(&self.agent_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     async fn finish(self) {
@@ -451,7 +464,17 @@ async fn managed_shutdown_timeout_uses_supervisor_fallback() {
         fixture.manager.stop_agent(&fixture.agent_id).await.unwrap();
         assert!(fixture.directory.join("shutdown").exists());
         assert!(!fixture.directory.join("complete").exists());
+        #[cfg(not(target_os = "linux"))]
         assert!(fixture.directory.join("forced").exists());
+        #[cfg(target_os = "linux")]
+        for file in ["pid", "descendant"] {
+            if let Ok(pid) = std::fs::read_to_string(fixture.directory.join(file)) {
+                assert!(
+                    !std::path::Path::new(&format!("/proc/{}", pid.trim())).exists(),
+                    "guardian must reap every owned process before returning"
+                );
+            }
+        }
         fixture.assert_clean().await;
         fixture.finish().await;
     }

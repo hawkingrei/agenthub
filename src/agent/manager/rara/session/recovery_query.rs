@@ -25,7 +25,7 @@ impl RaraHandle {
         // Observation needs current process ownership, but grants no execution lease.
         let _operation = match &self.loop_owner {
             Some(owner) => Some(owner.operations.clone().read_owned().await),
-            None => None,
+            None => self.authorize_input_owner().await?,
         };
         anyhow::ensure!(
             self.state.read().await.entry_ready,
@@ -33,6 +33,9 @@ impl RaraHandle {
         );
         let _gate = self.input_gate.lock().await;
         self.await_admitted_events().await?;
+        if let Some(owner) = &self.standalone_owner {
+            owner.store.verify_live(&owner.reservation).await?;
+        }
         let recovery = self.query_recovery_state().await?;
         Ok(NativeRecoveryView {
             local_session_id: self.store.local_session_id().into(),

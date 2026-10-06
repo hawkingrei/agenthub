@@ -1,7 +1,7 @@
 pub mod path_utils;
 pub mod rara;
 
-pub use rara::{RaraConfig, RaraLaunchConfig};
+pub use rara::{RaraConfig, RaraLaunchConfig, RaraSessionPolicy};
 
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};

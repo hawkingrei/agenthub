@@ -37,14 +37,14 @@ impl RaraHandle {
         target: RecoveryTarget,
         resolution: RecoveryResolution,
     ) -> anyhow::Result<()> {
-        let _operation = self.authorize_loop_input().await?;
+        let _operation = self.authorize_input_owner().await?;
         anyhow::ensure!(
             self.state.read().await.entry_ready,
             "native recovery entry is not ready"
         );
         let _gate = self.input_gate.lock().await;
         self.await_admitted_events().await?;
-        self.verify_loop_input().await?;
+        self.verify_input_owner().await?;
         anyhow::ensure!(
             target.runtime_id == self.store.runtime_id()
                 && target.session_id == self.stream.native_session_id(),

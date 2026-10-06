@@ -8,10 +8,10 @@ impl RaraHandle {
         sources: Vec<SourceRegistration>,
     ) -> anyhow::Result<()> {
         SourceRegistration::validate_batch(&sources, self.client.handshake())?;
-        let _operation = self.authorize_loop_input().await?;
+        let _operation = self.authorize_input_owner().await?;
         let _gate = self.input_gate.lock().await;
         self.await_admitted_events().await?;
-        self.verify_loop_input().await?;
+        self.verify_input_owner().await?;
         {
             let mut state = self.state.write().await;
             anyhow::ensure!(

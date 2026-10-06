@@ -182,10 +182,10 @@ impl RaraHandle {
             "responded_at":Utc::now().timestamp()}),
         )
         .await?;
-        let _operation = self.authorize_loop_input().await?;
+        let _operation = self.authorize_input_owner().await?;
         let _gate = self.input_gate.lock().await;
         self.await_admitted_events().await?;
-        self.verify_loop_input().await?;
+        self.verify_input_owner().await?;
         if cancellation.is_cancelled() || {
             let state = self.state.read().await;
             !state.entry_ready || state.pending.as_ref() != Some(&pending)

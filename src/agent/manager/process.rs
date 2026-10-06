@@ -220,6 +220,11 @@ impl AgentManager {
                         .cleanup_observed_session(&agent_id, &session_id, &child_mutex)
                         .await?;
                     let success = super::rara::exit_success(success, direct.as_deref()).await;
+                    if direct.is_some() {
+                        manager
+                            .cleanup_standalone_native_execution(&agent_id, Some(&session_id))
+                            .await?;
+                    }
                     Self::finalize_process_exit(
                         &db,
                         &event_dbs,
