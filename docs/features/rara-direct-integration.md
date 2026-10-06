@@ -936,6 +936,9 @@ Phase 1 implementation validation:
 - standalone SQLite migration/owner races, exact guardian retirement, loop admission exclusion,
   opening ambiguity/repair and reset authorization; actual native process history/approval/recovery
   checks across a reopened database and new manager
+- standalone and Team browser recovery against real API/SSE handlers and a native process:
+  confirmation sends no input or model request, explicit subsequent input executes once, and refresh
+  preserves the response and cleared recovery state; qualify configured providers separately
 - provider adapter unit tests for app-server handshake and capability negotiation
 - input mapping tests for submit, follow-up, pending answer, approval, cancel, and interrupt
 - request ack tests for accepted, queued, rejected, unknown-before-ack, and idempotent retry

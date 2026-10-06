@@ -44,7 +44,7 @@ Delivery order and acceptance: [native capability rollout](journal/2026-10-05-na
   approval recovery and uncertain-effect reconciliation preserve the conversation under fresh authority.
   Standalone Linux continuity now uses independent durable owners and explicit fresh/resume policy;
   actual-process restart, restored approvals and uncertain-effect reconciliation pass. Standalone browser
-  and configured-provider qualification remain open. Evidence:
+  recovery and refresh also pass against the real backend; configured-provider qualification remains open. Evidence:
   [native conversation binding](journal/2026-10-06-native-conversation-binding.md) and
   [native opening reconciliation](journal/2026-10-07-native-opening-reconciliation.md), plus
   [native resume acceptance](journal/2026-10-07-native-resume-acceptance.md) and
@@ -55,8 +55,9 @@ Delivery order and acceptance: [native capability rollout](journal/2026-10-05-na
   matching durable reentry receipts/events; explicit reconciliation has an authenticated API.
   Recovery confirmation now finishes the loop activation as waiting for new durable input,
   without automatic continuation or replay. Standalone restore now requires its new guarded owner,
-  rejects old callbacks and leaves recovery idle for explicit input. Standalone browser and configured-provider
-  qualification remain open. Evidence:
+  rejects old callbacks and leaves recovery idle for explicit input. The standalone browser confirms
+  recovery without executing input and retains the later result after refresh. Configured-provider
+  qualification remains open. Evidence:
   [native recovery entry](journal/2026-10-06-native-recovery-entry.md) and
   [native recovery controls](journal/2026-10-07-native-recovery-controls.md).
 - [ ] Qualify the assembled path with the installed runtime and configured provider: controlled

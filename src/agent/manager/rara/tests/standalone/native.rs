@@ -18,21 +18,27 @@ os.execv(settings['binary'], [settings['binary'], *sys.argv[1:], '--no-extension
 
 struct NativeFixture {
     fixture: Fixture,
+    app_state: crate::state::AppState,
     database: PathBuf,
+    retain_database: bool,
     requests: Arc<Mutex<Vec<Value>>>,
     server: tokio::task::JoinHandle<()>,
 }
 
 impl NativeFixture {
     async fn new(mode: &'static str) -> Self {
-        let directory =
-            std::env::temp_dir().join(format!("standalone-native-db-{}", Uuid::new_v4()));
-        std::fs::create_dir(&directory).unwrap();
+        let browser = (mode == "uncertain").then(browser_directory).flatten();
+        let retain_database = browser.is_some();
+        let directory = browser.unwrap_or_else(|| {
+            std::env::temp_dir().join(format!("standalone-native-db-{}", Uuid::new_v4()))
+        });
+        std::fs::create_dir_all(&directory).unwrap();
         let database = directory.join("control.sqlite");
+        assert!(!database.exists(), "use a fresh isolated browser directory");
         let pool = agenthub_db::init_db_at_path(&database).await.unwrap();
         pool.close().await;
-        let state = crate::api::team_tests::reopen_test_state_with_db_path(&database).await;
-        let mut fixture = Fixture::with_state("normal", state).await;
+        let app_state = crate::api::team_tests::reopen_test_state_with_db_path(&database).await;
+        let mut fixture = Fixture::with_state("normal", app_state.clone()).await;
         let requests = Arc::new(Mutex::new(Vec::<Value>::new()));
         let app = Router::new().route(
             "/v1/chat/completions",
@@ -63,7 +69,9 @@ impl NativeFixture {
         set_policy(&mut fixture, RaraSessionPolicy::Resume);
         Self {
             fixture,
+            app_state,
             database,
+            retain_database,
             requests,
             server,
         }
@@ -85,6 +93,7 @@ impl NativeFixture {
         manager.event_dbs = events;
         manager.mark_exited_on_startup().await.unwrap();
         self.fixture.manager = manager;
+        self.app_state = state;
     }
 
     async fn start(&self) -> String {
@@ -219,8 +228,14 @@ impl NativeFixture {
     async fn close(self) {
         self.fixture.finish().await;
         self.server.abort();
-        std::fs::remove_dir_all(self.database.parent().unwrap()).unwrap();
+        if !self.retain_database {
+            std::fs::remove_dir_all(self.database.parent().unwrap()).unwrap();
+        }
     }
+}
+
+fn browser_directory() -> Option<PathBuf> {
+    std::env::var_os("STANDALONE_NATIVE_BROWSER_DIR").map(PathBuf::from)
 }
 
 fn response(request: &Value, mode: &str) -> ([(&'static str, &'static str); 1], String) {
@@ -352,21 +367,57 @@ async fn standalone_native_process_reconciles_without_replaying_uncertain_effect
             .await
             .is_err()
     );
-    runtime
-        .reconcile_recovery(
-            agenthub_rara::RecoveryTarget {
-                runtime_id: view.runtime_id,
-                session_id: view.session_id,
-                recovery_id: view.recovery.blocked.unwrap().recovery_id,
-            },
-            "Observed one append; do not replay it".into(),
+    let target = agenthub_rara::RecoveryTarget {
+        runtime_id: view.runtime_id,
+        session_id: view.session_id,
+        recovery_id: view.recovery.blocked.unwrap().recovery_id,
+    };
+    let browser = if let Some(directory) = browser_directory() {
+        let mut state = native.app_state.clone();
+        state.agents = Arc::new(native.fixture.manager.clone());
+        let browser = crate::agent::manager::test_browser::BrowserServer::start(
+            &state,
+            directory,
+            json!({"agent_id":native.fixture.agent_id,
+                "local_session_id":second,"target":target}),
         )
-        .await
-        .unwrap();
+        .await;
+        browser.wait_for("reviewed").await;
+        Some(browser)
+    } else {
+        runtime
+            .reconcile_recovery(target, "Observed one append; do not replay it".into())
+            .await
+            .unwrap();
+        None
+    };
+    let recovery = runtime.query_recovery().await.unwrap().recovery;
+    assert!(recovery.blocked.is_none() && recovery.waiting_turn_id.is_none());
+    assert!(recovery.last_resolution.is_some());
     assert_eq!(native.requests.lock().await.len(), previous);
     native.assert_resume(&first, &second).await;
-    native.prompt(&second, "explicit-after-recovery").await;
+    if let Some(browser) = &browser {
+        browser.signal("review-verified");
+        browser.wait_for("input-sent").await;
+    } else {
+        native.prompt(&second, "explicit-after-recovery").await;
+    }
     native.wait_idle().await;
     assert_eq!(std::fs::read_to_string(effects).unwrap(), "executed\n");
+    let requests = native.requests.lock().await;
+    assert_eq!(requests.len(), previous + 1);
+    let context = requests.last().unwrap()["messages"].to_string();
+    assert!(
+        context.contains("uncertain-instruction") && context.contains("explicit-after-recovery")
+    );
+    drop(requests);
+    if let Some(browser) = browser {
+        std::fs::write(
+            browser_directory().unwrap().join("effects.txt"),
+            "executed\n",
+        )
+        .unwrap();
+        browser.finish().await;
+    }
     native.close().await;
 }

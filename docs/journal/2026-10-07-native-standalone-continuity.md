@@ -56,6 +56,21 @@ of expecting a provider SIGTERM handler.
 The two reset/history API cases pass, including capability denial, held-owner conflict, provider
 selection and preservation of retired generations after reset.
 
+The opt-in standalone browser case passes against real API/SSE routes, a reopened database/new
+manager and the actual candidate process. Recovery confirmation sends no input and the backend
+observes no additional model request before explicit input. One subsequent instruction preserves
+the earlier provider context, produces one response and leaves exactly one original append.
+Refreshing retains the response and cleared recovery state. Before/after screenshots were inspected;
+no browser page errors occurred. The shared browser-server regression also passes the existing Team
+recovery case. TypeScript, ESLint and the production web build pass. Chrome DevTools MCP was
+unavailable, so these checks use the repository's Playwright fallback.
+
+The shared server writes its private authentication manifest atomically and stops on drop. Both
+browser fixtures remain opt-in; ordinary process tests still exercise direct API controls without
+requiring a browser. Browser artifacts are under `target/loop-review-validation/standalone-browser-*`
+and `target/loop-review-validation/loop-browser-shared-*`; manifests contain local credentials and
+must not be published.
+
 Commands for the completed component checks and final regression gates:
 
 ```bash
@@ -69,11 +84,20 @@ git diff --check
 ```
 
 Actual-process checks require `AGENTHUB_RARA_TEST_BINARY` and a guardian-capable local binary.
+For browser acceptance, build `web/dist`, set `LOOP_UI_WEB_DIR` to its absolute path and set
+`STANDALONE_NATIVE_BROWSER_DIR` to a fresh private directory. Start the ignored
+`standalone_native_process_reconciles_without_replaying_uncertain_effects` case and, once its
+`ready.json` appears, run from `web/`:
+
+```bash
+PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_MINIMAL_RUNTIME=1 npm exec playwright -- test tests/e2e/native_standalone_recovery_process.e2e.ts --project=chromium --workers=1
+```
+
+The Playwright process must inherit the same `STANDALONE_NATIVE_BROWSER_DIR`.
 Remote exact-head checks remain the publication gate recorded with the PR.
 
 ## Follow-Ups
 
-- Qualify the standalone recovery browser flow against the actual backend and provider process.
 - Complete installed/configured-provider qualification and upstream publication after the pending
   destination authorization; do not substitute deterministic local model evidence for those gates.
 - Track exact-head CI and retained activation-to-transcript navigation in [TODO](../todo.md).

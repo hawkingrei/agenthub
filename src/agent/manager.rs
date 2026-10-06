@@ -6,6 +6,8 @@ mod loop_launch;
 mod loop_lifecycle;
 mod loop_preflight;
 mod mcp_proxy;
+#[cfg(all(test, unix))]
+mod test_browser;
 pub(crate) use loop_launch::LoopControlEndpoint;
 pub(crate) use loop_preflight::LoopPreflight;
 mod nodes;
