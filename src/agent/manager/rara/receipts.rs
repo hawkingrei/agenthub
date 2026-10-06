@@ -22,7 +22,12 @@ pub(super) async fn control(
     let request_id = Uuid::now_v7().to_string();
     let frame = request.frame(store.runtime_id(), &request_id, session)?;
     let kind = kind(request.kind());
-    let session = session.map(str::to_owned);
+    // The wire opening has no live session provenance. The durable intent still
+    // fences the resumed identity so a wrong-session ACK cannot create ownership.
+    let session = match &request {
+        ControlRequest::ResumeSession { session_id } => Some(session_id.clone()),
+        _ => session.map(str::to_owned),
+    };
     let turn = request.expected_turn_id().map(str::to_owned);
     let client = client.clone();
     let store = store.clone();
@@ -48,6 +53,7 @@ pub(super) async fn control(
 pub(super) fn kind(kind: ControlKind) -> RuntimeRequestKind {
     match kind {
         ControlKind::CreateSession => RuntimeRequestKind::CreateSession,
+        ControlKind::ResumeSession => RuntimeRequestKind::ResumeSession,
         ControlKind::Query => RuntimeRequestKind::Query,
         ControlKind::Prompt => RuntimeRequestKind::Prompt,
         ControlKind::GuardedPrompt => RuntimeRequestKind::GuardedPrompt,

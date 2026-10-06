@@ -91,6 +91,20 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
             ON loop_activation_events(activation_id, id);
         CREATE INDEX IF NOT EXISTS idx_loop_event_metrics
             ON loop_activation_events(activation_id, kind, generation, id);
+        CREATE TABLE IF NOT EXISTS loop_native_sessions (
+            actor_id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            activation_id TEXT NOT NULL,
+            generation INTEGER NOT NULL CHECK(generation > 0),
+            local_session_id TEXT NOT NULL REFERENCES agent_sessions(id),
+            configuration_digest TEXT NOT NULL CHECK(length(configuration_digest) = 64),
+            native_session_id TEXT,
+            state TEXT NOT NULL CHECK(state IN ('opening', 'bound')),
+            updated_at INTEGER NOT NULL,
+            CHECK(state != 'bound' OR native_session_id IS NOT NULL),
+            FOREIGN KEY(actor_id, team_id) REFERENCES loop_policies(actor_id, team_id),
+            FOREIGN KEY(activation_id, actor_id, team_id) REFERENCES loop_activations(id, actor_id, team_id)
+        );
         CREATE TABLE IF NOT EXISTS loop_tool_observations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             activation_id TEXT NOT NULL REFERENCES loop_activations(id),

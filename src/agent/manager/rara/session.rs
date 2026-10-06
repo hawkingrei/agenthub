@@ -70,33 +70,40 @@ impl Deref for RaraHandle {
 }
 
 impl RaraHandle {
-    pub(super) async fn create(
+    pub(super) async fn open(
         manager: &AgentManager,
         client: Client,
         store: RuntimeEventStore,
         agent_id: &str,
         output_tx: broadcast::Sender<AgentOutput>,
+        config: &agenthub_config::RaraLaunchConfig,
     ) -> anyhow::Result<Self> {
-        let ack = receipts::control(
-            &manager.daemon_tasks,
-            &client,
-            &store,
-            None,
-            ControlRequest::CreateSession,
-        )
-        .await?;
+        let (request, reservation) = manager
+            .begin_native_conversation(
+                agent_id,
+                store.local_session_id(),
+                config,
+                client.handshake(),
+            )
+            .await?;
+        let ack = receipts::control(&manager.daemon_tasks, &client, &store, None, request).await?;
         let RuntimeRequestAck::Accepted {
             session_id,
             last_sequence,
             ..
         } = ack
         else {
-            anyhow::bail!("direct runtime rejected session creation");
+            anyhow::bail!("direct runtime rejected conversation opening");
         };
         let stream = store
             .stream(&session_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("direct runtime stream ownership is missing"))?;
+        if let Some(reservation) = &reservation {
+            agenthub_db::loop_runtime::LoopStore::new(manager.db.clone())
+                .bind_native_session(reservation, &session_id, chrono::Utc::now().timestamp())
+                .await?;
+        }
         let (delivery, _) = watch::channel(None);
         let (progress, _) = watch::channel(0);
         Ok(Self {
@@ -194,7 +201,7 @@ impl RaraHandle {
                         OutputFrame::ReplayGap(gap) => {
                             anyhow::ensure!(gap.runtime_id == self.store.runtime_id() && gap.session_id == self.stream.native_session_id(), "direct replay gap belongs to another session");
                             let receipt = self.store.request_receipt(&gap.request_id).await?.ok_or_else(|| anyhow::anyhow!("direct replay gap has no control receipt"))?;
-                            anyhow::ensure!(receipt.kind == RuntimeRequestKind::CreateSession || replay.as_ref().is_some_and(|r| r.id == gap.request_id && r.after == gap.requested_after), "direct replay gap has an invalid request");
+                            anyhow::ensure!(matches!(receipt.kind, RuntimeRequestKind::CreateSession | RuntimeRequestKind::ResumeSession) || replay.as_ref().is_some_and(|r| r.id == gap.request_id && r.after == gap.requested_after), "direct replay gap has an invalid request");
                             let after = events.sequence();
                             if after + 1 < gap.oldest_available || after > gap.latest {
                                 self.stream.record_replay_gap(RuntimeReplayGap { requested_after: after, oldest_available: gap.oldest_available, latest: gap.latest }).await?;

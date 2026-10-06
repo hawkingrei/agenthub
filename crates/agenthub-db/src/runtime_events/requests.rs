@@ -7,6 +7,7 @@ use super::{RuntimeEventError, RuntimeEventStore, sequence, validate_id};
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeRequestKind {
     CreateSession,
+    ResumeSession,
     Prompt,
     GuardedPrompt,
     FollowUp,
@@ -178,7 +179,10 @@ impl RuntimeEventStore {
         );
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         self.require_open(&mut tx).await?;
-        if let Some(target) = intent.target_session_id {
+        // Resume names a known conversation before this runtime owns its new stream.
+        if let Some(target) = intent.target_session_id
+            && intent.kind != RuntimeRequestKind::ResumeSession
+        {
             let owns: bool = sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM runtime_event_streams \
                 WHERE runtime_id = ? AND native_session_id = ?)",
@@ -299,6 +303,7 @@ impl RuntimeEventStore {
                 }
                 let valid_turn = match receipt.kind {
                     RuntimeRequestKind::CreateSession
+                    | RuntimeRequestKind::ResumeSession
                     | RuntimeRequestKind::PromptSource
                     | RuntimeRequestKind::SkillSource
                     | RuntimeRequestKind::McpSource
@@ -346,8 +351,10 @@ impl RuntimeEventStore {
             ),
             RuntimeEventError::ReceiptConflict
         );
-        if receipt.kind == RuntimeRequestKind::CreateSession
-            && let Some(session_id) = returned_session
+        if matches!(
+            receipt.kind,
+            RuntimeRequestKind::CreateSession | RuntimeRequestKind::ResumeSession
+        ) && let Some(session_id) = returned_session
         {
             // Initial events can follow the ACK immediately. Expose stream ownership and
             // its admission receipt in one commit before the consumer accepts those events.

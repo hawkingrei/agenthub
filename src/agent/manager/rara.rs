@@ -12,6 +12,7 @@ use super::{AgentInput, AgentManager};
 use crate::acp::AcpActorSkillContext;
 use crate::agent::AgentRecord;
 
+mod continuity;
 mod events;
 mod history;
 mod loop_activation;
@@ -154,9 +155,15 @@ impl AgentManager {
             &client.handshake().runtime_id,
         )
         .await?;
-        let startup =
-            session::RaraHandle::create(self, client.clone(), store.clone(), agent_id, output_tx)
-                .await;
+        let startup = session::RaraHandle::open(
+            self,
+            client.clone(),
+            store.clone(),
+            agent_id,
+            output_tx,
+            config,
+        )
+        .await;
         let handle = match startup {
             Ok(handle) => std::sync::Arc::new(handle),
             Err(error) => {

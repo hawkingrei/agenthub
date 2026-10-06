@@ -285,6 +285,7 @@ fn method(frame: &ClientFrame) -> Result<&'static str, ConnectionError> {
     let operation = envelope.request["payload"]["type"].as_str();
     match (family, operation) {
         (Some("session"), Some("create_session")) => Ok("session.create"),
+        (Some("session"), Some("resume_session")) => Ok("session.resume"),
         (Some("session"), Some("query_runtime_state")) => Ok("session.query_state"),
         (Some("session"), Some("cancel_current_turn")) => Ok("session.cancel"),
         (Some("session"), Some("interrupt_current_turn")) => Ok("session.interrupt"),
