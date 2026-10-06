@@ -23,8 +23,9 @@ are integrated. Authorized receipt/cursor history remains available after exit, 
 retires abandoned transport ownership. Fresh local Linux loop activations are admitted through
 the shared scheduler and supervised launch/cleanup path, with prompt/skill-source capability
 checks before entry. Controlled MCP/App/Mem sources and semantic outcome mapping are implemented
-behind negotiated capabilities. Cross-process resume, durable approval recovery, upstream
-publication and assembled configured-provider qualification remain active requirements tracked in
+behind negotiated capabilities. Local loop resume and durable approval recovery use current-owner
+reentry and explicit reconciliation. Standalone continuity, upstream publication and assembled
+configured-provider qualification remain active requirements tracked in
 [the transition TODO](../todo.md).
 Remote placement, legacy Team sessions and legacy idle loops remain rejected.
 
@@ -53,9 +54,9 @@ The broader integration contract covers:
 
 Rara direct integration participates in the [agent loop runtime](agent-loop-runtime.md) as one
 provider adapter behind the shared scheduler. Fresh local Linux activations use the shared
-reservation, launch, structured finish and supervised cleanup lifecycle. The remaining capability
-contracts below require implementation and explicit negotiation before resume or durable approval
-recovery can be enabled; controlled tool sources already require their negotiated source methods.
+reservation, launch, structured finish and supervised cleanup lifecycle. Resume requires the full
+durable-interaction capability set before opening a conversation; controlled tool sources require
+their negotiated source methods independently.
 
 - One admitted activation delivers one configured role prompt through `SubmitUserPrompt`, or
   `SubmitFollowUp` when the adapter reports a reusable live turn. Rara-internal reasoning and tool
@@ -220,8 +221,12 @@ directory discovery cannot substitute for the exact local launch association.
 Explicit fresh policy can replace an unresolved opening only after verified cleanup. Conversation
 history grants no permission: each activation registers current sources and uses new credentials.
 Waiting inputs and interrupted execution must be preserved and reconciled before entry; they
-cannot be treated as idle or authorize replay of an earlier decision. Resume preflight remains
-closed until outer recovery interaction and process qualification cover these states.
+cannot be treated as idle or authorize replay of an earlier decision. Resume launch requires
+`approval_persistence` and all of `session.resume`, `session.query_recovery`,
+`session.resolve_recovery` and `session.evaluate_reentry` before creating an event owner or
+opening a conversation. A previously idle observation cannot narrow this requirement because
+the durable checkpoint may contain a later unresolved turn. Fresh policy keeps its existing
+capability requirements.
 
 Restored interaction entry must register current sources before accepting an answer.
 The tool-free `session.evaluate_reentry` control targets the exact waiting turn or
@@ -238,8 +243,11 @@ before delivering its answer.
 Interrupted recovery remains blocked until an operator supplies a bounded reconciliation
 note for the exact current token after old executor/child retirement and effect inspection.
 A compatible entry verdict is not reconciliation. Applying the resolution must commit its
-receipt and recovery-state prefix before accepting an explicit new prompt; previous input
-and approvals are never replayed automatically.
+receipt and recovery-state prefix. For a loop session, it then commits a fenced `waiting`
+outcome with the `input` wait reason and no automatic continuation. The supervisor retires
+the executor before another durable trigger can start a new activation. This completes the
+recovery activation, not its business task. Standalone sessions remain idle for an explicit
+new prompt. Previous input and approvals are never replayed automatically.
 
 The authenticated `GET /api/agents/{id}/runtime/recovery?local_session_id=...`
 endpoint requires `RuntimeOperate` and the exact current local launch. It queries
@@ -254,8 +262,10 @@ The authenticated `POST /api/agents/{id}/runtime/recovery` endpoint requires
 `runtime_id`, native `session_id` and `recovery_id`, and a nonempty single-line
 `note` of at most 4096 UTF-8 bytes. Pending entry, stale ownership and an unconfirmed
 resolution return a conflict. The daemon owns admitted reconciliation through caller
-disconnects. An identical confirmed resolution is idempotent; it never sends a new
-prompt. The operator supplies any subsequent input explicitly.
+disconnects. An identical confirmed resolution is idempotent while its owner remains
+authorized; a finalizing or retired loop owner returns a conflict. The resolution never
+sends a new prompt. Later loop work must enter through durable work intake, not direct
+input to the recovered activation.
 
 Standalone and Team member threads share a browser recovery panel for active native
 sessions with runtime-operation authority (root, admin or operator). `Review recovery`
@@ -441,8 +451,8 @@ only after existing supervised cleanup. A live input/approval wait keeps its cal
 canceling that wait may end the native turn through input-discarded alone.
 
 The pinned build supports typed semantic guard input/events, native session resume and
-durable approval decisions. Outer resume policies still fail preflight pending assembled
-recovery and process qualification. MCP/App/Mem launch validation
+durable approval decisions. Outer loop Resume admission negotiates the complete recovery
+capability set before opening; incompatible runtimes fail without a fresh fallback. MCP/App/Mem launch validation
 reuses the shared binding rules; older runtimes without the negotiated source controls
 fail startup before the entry prompt. Loop launches disable ambient extension discovery
 and native memory facilities. They never replace missing controlled sources with ambient configuration.
@@ -916,6 +926,7 @@ Remaining local capability acceptance:
 | Semantic outcomes | `compatible`, `mismatch` and `needs_clarification` produce distinct canonical outcomes under the current activation fence; ordinary provider completion cannot substitute for structured finish. |
 | Cross-process continuity | Restart into a new local launch preserves provider continuity and canonical task/IM identity only after verified old-owner cleanup; incompatible continuity cannot silently create a fresh session under a resume policy. |
 | Durable approvals | A committed pending approval survives process loss and binds its answer to the recovered owned interaction; stale, duplicate, rejected and uncertain decisions cannot grant replacement execution. |
+| Recovery completion | Resolution requires its matching committed ACK/event prefix, records waiting for input without a continuation, survives caller disconnect and releases the reservation only after supervised cleanup; later durable work receives a new activation. |
 | Assembled runtime | Installed-binary and configured-provider evidence covers these capabilities together, browser-independent execution, retained history and nested-subteam identity isolation; fixture-only evidence is identified separately. |
 
 ## Operational Notes
@@ -953,6 +964,8 @@ Remaining local capability acceptance:
   reject valid Team work or hide role/card drift behind model judgment.
 
 ## Source Journals
+
+- [2026-10-07: Native resume acceptance](../journal/2026-10-07-native-resume-acceptance.md)
 
 - [2026-10-07: Native opening reconciliation](../journal/2026-10-07-native-opening-reconciliation.md)
 - [2026-10-07: Native recovery controls](../journal/2026-10-07-native-recovery-controls.md)

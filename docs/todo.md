@@ -40,19 +40,26 @@ Delivery order and acceptance: [native capability rollout](journal/2026-10-05-na
   identity and verified old-owner cleanup before replacement execution.
   Durable opening/binding and exact-session resume receipts are integrated. A committed opening
   can repair a missing binding after verified cleanup; genuinely unknown results stay blocked.
-  Resume preflight remains closed pending assembled recovery and actual-process acceptance. Evidence:
+  Local loop Resume negotiates full recovery support before opening; actual-process clean restart,
+  approval recovery and uncertain-effect reconciliation preserve the conversation under fresh authority.
+  Standalone continuity and configured-provider qualification remain open. Evidence:
   [native conversation binding](journal/2026-10-06-native-conversation-binding.md) and
-  [native opening reconciliation](journal/2026-10-07-native-opening-reconciliation.md).
+  [native opening reconciliation](journal/2026-10-07-native-opening-reconciliation.md), plus
+  [native resume acceptance](journal/2026-10-07-native-resume-acceptance.md).
 - [ ] Persist and recover pending approvals with exact ownership, explicit decision receipts and
   no automatic replay of uncertain tool execution or approval answers.
   The outer consumer now gates restored callbacks on current sources, live authority and
   matching durable reentry receipts/events; explicit reconciliation has an authenticated API.
-  Shared browser recovery review is implemented; assembled restart/browser qualification and
-  standalone continuity remain open. Evidence:
+  Recovery confirmation now finishes the loop activation as waiting for new durable input,
+  without automatic continuation or replay. Standalone continuity and configured-provider
+  qualification remain open. Evidence:
   [native recovery entry](journal/2026-10-06-native-recovery-entry.md) and
   [native recovery controls](journal/2026-10-07-native-recovery-controls.md).
 - [ ] Qualify the assembled path with the installed runtime and configured provider: controlled
   tools, restart/resume, approval recovery, semantic outcomes and nested-subteam isolation.
+- [ ] Add explicit navigation from retained loop activation records to their stopped transcript.
+  A cold process-diagnostics page selects only a live owner; completed conversation events remain
+  available through the scoped event API, while member history exposes durable outcomes today.
 
 Remote loop ownership, non-Linux guardians, standalone Mem scope, App authoring UI and cross-owner
 consent remain separate scope.

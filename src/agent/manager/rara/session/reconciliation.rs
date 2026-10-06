@@ -1,3 +1,4 @@
+use agenthub_agent_domain::loop_runtime::{LoopOutcome, LoopOutcomeKind, LoopWaitReason};
 use agenthub_rara::{RecoveryResolution, RecoveryTarget};
 use tokio::sync::oneshot;
 
@@ -114,6 +115,27 @@ impl RaraHandle {
                             && recovery.last_resolution.as_ref() == Some(&resolution)),
                 "native recovery resolution has no matching committed state"
             );
+            drop(state);
+            if let Some(owner) = &self.loop_owner {
+                // Reconciliation does not resume work. Retire this activation so a
+                // later durable trigger can enter with fresh authority and context.
+                owner
+                    .store
+                    .finish(
+                        &owner.reservation,
+                        &LoopOutcome {
+                            kind: LoopOutcomeKind::Waiting,
+                            wait_reason: Some(LoopWaitReason::Input),
+                            task_note_id: None,
+                            continuation: None,
+                        },
+                        chrono::Utc::now().timestamp(),
+                    )
+                    .await?;
+                let mut state = self.state.write().await;
+                state.entry_ready = false;
+                state.recovery_reconciled = true;
+            }
             Ok(())
         }
         .await;

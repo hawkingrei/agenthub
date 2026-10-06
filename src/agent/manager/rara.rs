@@ -187,13 +187,22 @@ impl AgentManager {
             client
                 .handshake()
                 .require_methods(&["prompt_source.register", "skill_source.register"])?;
-            let has_mcp_sources = self
+            let (has_mcp_sources, resume) = self
                 .loop_credentials
                 .lock()
                 .await
                 .get(agent_id)
                 .and_then(|credentials| credentials.native_sources.as_ref())
-                .is_some_and(|sources| !sources.launch.mcp_servers().is_empty());
+                .map(|sources| {
+                    (
+                        !sources.launch.mcp_servers().is_empty(),
+                        sources.launch.require_resume,
+                    )
+                })
+                .unwrap_or_default();
+            if resume {
+                client.handshake().require_durable_resume()?;
+            }
             if has_mcp_sources {
                 agenthub_rara::McpSource::require_capability(client.handshake())?;
             }

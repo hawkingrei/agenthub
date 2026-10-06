@@ -5,6 +5,7 @@ use super::*;
 mod input;
 mod opening;
 mod recovery;
+mod resume;
 mod semantic_guard;
 mod sources;
 mod transport;
@@ -130,12 +131,22 @@ for line in sys.stdin:
         else:
             ack(rid)
     elif operation == 'resolve_recovery':
+        before = sequence
         assert blocked and body['recovery_id'] == blocked['recovery_id']
         assert body['note']
         blocked = None
         resolution = body
         event('session','recovery_state',{'state':recovery_state()})
-        ack(rid)
+        (root / 'native-resolution-recorded').write_text(native)
+        if config['mode'] == 'reentry-recovery-resolution-hold':
+            deadline = time.monotonic() + 10
+            while not (root / 'native-resolution-release').exists():
+                assert time.monotonic() < deadline
+                time.sleep(0.01)
+        if config['mode'] == 'reentry-recovery-resolution-prefix':
+            emit('ack', {'runtime_id':runtime,'request_id':rid,'result':{'status':'accepted','session_id':native,'turn_id':None,'last_sequence':before}})
+        else:
+            ack(rid)
     elif operation == 'answer_shell_approval':
         assert request['payload']['expected_turn_id'] == waiting == 'restored-turn'
         turn = str(uuid.uuid4())
@@ -365,7 +376,7 @@ async fn native_loop_fresh_follow_up_pins_one_role_entry_and_keeps_mailbox_ident
 }
 
 #[tokio::test]
-async fn native_loop_terminal_turn_without_finish_is_interrupted_and_resume_is_rejected() {
+async fn native_loop_terminal_turn_without_finish_is_interrupted_and_resume_is_negotiated() {
     let fixture = fixture("no-outcome").await;
     let activation = fixture.execute("missing-outcome").await;
     assert_eq!(activation.state, LoopActivationState::Interrupted);
@@ -387,12 +398,16 @@ async fn native_loop_terminal_turn_without_finish_is_interrupted_and_resume_is_r
         )
         .await
         .unwrap();
-    assert!(!preflight.ready);
-    assert!(preflight.blockers.contains(&"native_resume_unsupported"));
+    assert!(preflight.ready);
     assert!(
         preflight
             .warnings
-            .contains(&"native_permissions_require_live_runtime")
+            .contains(&"native_resume_capabilities_negotiated_before_entry")
+    );
+    assert!(
+        preflight
+            .warnings
+            .contains(&"native_permissions_require_current_owner")
     );
     fixture.close().await;
 }
