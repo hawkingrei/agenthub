@@ -945,6 +945,9 @@ Phase 1 implementation validation:
 - opt-in configured-provider Team checks for task/Card semantic outcomes, controlled App/Mem
   scope/revocation/uncertainty and a signed dispatch/report/acceptance cycle with native private
   tasks; synthetic canonical inputs, exact allow-once command checks and isolated provider state
+- Team database/manager restart checks for retained assistant context, task memory/mailbox identity,
+  replacement approval callbacks and explicit uncertain-effect review; no automatic continuation
+  or repeated side effect, with later work carried by a new durable activation
 - provider adapter unit tests for app-server handshake and capability negotiation
 - input mapping tests for submit, follow-up, pending answer, approval, cancel, and interrupt
 - request ack tests for accepted, queued, rejected, unknown-before-ack, and idempotent retry

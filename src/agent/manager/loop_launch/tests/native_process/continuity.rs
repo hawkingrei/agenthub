@@ -1,6 +1,8 @@
 use super::*;
 
 mod browser;
+#[cfg(target_os = "linux")]
+mod configured;
 
 const WRAPPER_WITH_PID: &str = r#"#!/usr/bin/env python3
 import json, os, pathlib, sys
@@ -19,7 +21,7 @@ struct NativeFixture {
 
 impl NativeFixture {
     async fn new(mode: &'static str) -> Self {
-        let mut fixture = if mode == "uncertain"
+        let fixture = if mode == "uncertain"
             && let Some(directory) = browser::directory()
         {
             std::fs::create_dir_all(&directory).unwrap();
@@ -32,6 +34,10 @@ impl NativeFixture {
         } else {
             Fixture::new("no-outcome").await
         };
+        Self::with_fixture(mode, fixture).await
+    }
+
+    async fn with_fixture(mode: &'static str, mut fixture: Fixture) -> Self {
         let requests = Arc::new(Mutex::new(Vec::new()));
         let app = Router::new().route(
             "/v1/chat/completions",

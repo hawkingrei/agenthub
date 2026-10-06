@@ -3,8 +3,9 @@
 ## Summary
 
 Add opt-in configured-provider checks for native Team semantic outcomes, the controlled App/Mem
-proxy, and a dispatch/report/acceptance cycle with private native children. The fixtures use
-synthetic work and isolated local state. External provider qualification remains pending.
+proxy, a dispatch/report/acceptance cycle with private native children, and database/manager
+restart with durable conversation and approval recovery. The fixtures use synthetic work and
+isolated local state. External provider qualification remains pending.
 
 ## Background
 
@@ -22,6 +23,11 @@ behavior. The additional fixtures make those remaining checks explicit and repea
 - Three sequential activations dispatch, report and accept one canonical task through the signed
   control CLI. Each activation starts a native child that creates a private task; those tasks and
   child identities must remain outside canonical Team state.
+- Reopen a production-schema SQLite database under a new manager, preserving the canonical task,
+  memory prefix and mailbox identity while runtime/local-session identities and generations change.
+  Recover a pending approval under a new callback, or explicitly review an uncertain append before
+  later durable input. The append must occur once, and ordinary provider completion must leave the
+  canonical task open.
 
 ## Key Decisions
 
@@ -40,6 +46,9 @@ behavior. The additional fixtures make those remaining checks explicit and repea
   on a scripted model triggering the revocation.
 - The lifecycle script performs predetermined test actions. Success proves native model/tool
   integration and authority boundaries, not autonomous planning quality.
+- Recovery task instructions live in the current canonical task summary. Updating that summary
+  must not change role configuration or the task memory prefix. Approval and recovery oracles use
+  retained receipts, actual assistant output and the isolated effect file rather than model claims.
 
 ## Validation
 
@@ -59,6 +68,15 @@ the controlled services' private credentials or endpoints.
 Root `cargo clippy -p agenthub --lib --tests -- -D warnings`, `cargo fmt --all --check`,
 `git diff --check` and 131 local documentation links pass. All task-owned fixture services stopped.
 
+The recovery follow-up adds three cases for random-code recall, restored approval and uncertain
+effect review across database/manager restarts. All three final cases pass against the same native
+candidate and a localhost-only deterministic model; the three affected existing continuity
+process regressions also pass. The final recovery run made 13 local model requests, including
+seven tool-free reentry checks, and no external provider requests. Old approval callbacks are
+rejected after the new callback or recovery entry appears. Another database/manager restart
+confirms that review creates no pending continuation. Root Clippy with warnings denied,
+formatting, whitespace and all 131 documentation links pass. The owned model service stopped.
+
 No new external configured-provider Team result has been recorded. Automatic approval rejected the
 external semantic check before execution because the task, role and project-prompt payload to the
 configured destination had not been specifically authorized. The unused private configuration
@@ -70,6 +88,7 @@ two environment variables above:
 ```bash
 cargo test -p agenthub --lib native_process::configured:: -- --ignored --test-threads=1
 cargo test -p agenthub --lib agent::manager::loop_launch::tests::native_process::mcp::configured::configured_provider_controlled_tools_preserve_scope_and_uncertainty -- --exact --ignored
+cargo test -p agenthub --lib native_process::continuity::configured:: -- --ignored --test-threads=1
 ```
 
 The proxy parent supplies isolated dummy upstream credentials to its child. Do not run the child
@@ -79,7 +98,8 @@ entry directly or run every ignored test indiscriminately.
 
 - Run the opt-in Team cases against the authorized configured provider and record the model,
   candidate identity and bounded results separately from deterministic evidence.
-- Complete configured-provider Team continuity/recovery and installed-runtime qualification.
+- Qualify the Team continuity/recovery cases with the authorized provider and complete
+  installed-runtime qualification.
 - Publish the producer changes after destination authorization and complete applicable CI.
 
 Contract: [direct runtime integration](../features/rara-direct-integration.md).

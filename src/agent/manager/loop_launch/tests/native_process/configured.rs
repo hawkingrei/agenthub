@@ -179,7 +179,7 @@ async fn approve_pending(
     }
 }
 
-async fn verify_command(
+pub(super) async fn verify_command(
     fixture: &Fixture,
     activation: &str,
     id: &str,

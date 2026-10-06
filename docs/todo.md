@@ -65,8 +65,8 @@ Delivery order and acceptance: [native capability rollout](journal/2026-10-05-na
 - [ ] Qualify the assembled path with the installed runtime and configured provider: controlled
   tools, restart/resume, approval recovery, semantic outcomes and nested-subteam isolation.
   Standalone configured-provider history/approval/recovery pass with the local candidate.
-  Team semantic, controlled-tool and nested lifecycle fixtures are prepared; external execution
-  still requires payload/destination authorization. See
+  Team semantic, controlled-tool, nested lifecycle and database/manager recovery fixtures are
+  prepared; external execution still requires payload/destination authorization. See
   [native Team provider acceptance](journal/2026-10-07-native-team-provider-acceptance.md).
   The installed `0.0.22` handshake lacks durable resume/recovery, MCP sources and approval
   persistence; a producer update is required before that binary can pass the assembled gate.
