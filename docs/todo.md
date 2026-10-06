@@ -67,9 +67,11 @@ Delivery order and acceptance: [native capability rollout](journal/2026-10-05-na
   Standalone configured-provider history/approval/recovery pass with the local candidate.
   The installed `0.0.22` handshake lacks durable resume/recovery, MCP sources and approval
   persistence; a producer update is required before that binary can pass the assembled gate.
-- [ ] Add explicit navigation from retained loop activation records to their stopped transcript.
-  A cold process-diagnostics page selects only a live owner; completed conversation events remain
-  available through the scoped event API, while member history exposes durable outcomes today.
+- [x] Add explicit navigation from retained loop activation records to their stopped transcript.
+  Terminal records now open a separate read-only conversation drawer. Scoped paging, partial-message
+  recovery, denied reads and stale-response isolation are covered; actual backend/browser checks pass
+  after process exit and page reload on desktop and narrow viewports. Evidence:
+  [retained activation transcripts](journal/2026-10-07-retained-activation-transcripts.md).
 
 Remote loop ownership, non-Linux guardians, standalone Mem scope, App authoring UI and cross-owner
 consent remain separate scope.
