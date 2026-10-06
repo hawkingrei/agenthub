@@ -124,7 +124,7 @@ async fn loop_mem_context_evidence_is_fenced_immutable_and_survives_reopen() {
     fixture.close().await;
 }
 
-async fn partition(fixture: &Fixture, run: &str, team: &str) {
+pub(super) async fn partition(fixture: &Fixture, run: &str, team: &str) {
     sqlx::query("INSERT INTO team_runs(id, team_id, context_id, status, input_json, created_at) VALUES (?, ?, 'loop', 'submitted', '{}', 100)")
         .bind(run).bind(team).execute(&fixture.store.pool).await.unwrap();
     sqlx::query(
@@ -137,7 +137,7 @@ async fn partition(fixture: &Fixture, run: &str, team: &str) {
     .unwrap();
 }
 
-fn snapshot() -> LoopLaunchSnapshot {
+pub(super) fn snapshot() -> LoopLaunchSnapshot {
     LoopLaunchSnapshot {
         version: 1,
         provider_id: "fake-acp".into(),

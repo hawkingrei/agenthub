@@ -190,7 +190,25 @@ async fn fixture(mode: &str) -> Fixture {
 async fn native_loop_fresh_follow_up_pins_one_role_entry_and_keeps_mailbox_identity() {
     let fixture = fixture("finish").await;
     let first = fixture.execute("first-native").await;
+    let first_binding: (String, String, String, i64) = sqlx::query_as(
+        "SELECT native_session_id, configuration_digest, local_session_id, generation FROM loop_native_sessions WHERE actor_id = 'worker' AND state = 'bound'",
+    ).fetch_one(&fixture.state.db).await.unwrap();
     let second = fixture.execute("second-native").await;
+    let second_binding: (String, String, String, i64) = sqlx::query_as(
+        "SELECT native_session_id, configuration_digest, local_session_id, generation FROM loop_native_sessions WHERE actor_id = 'worker' AND state = 'bound'",
+    ).fetch_one(&fixture.state.db).await.unwrap();
+    assert_ne!(
+        first_binding.0, second_binding.0,
+        "fresh policy replaces the conversation"
+    );
+    assert_eq!(
+        first_binding.1, second_binding.1,
+        "activation and credential rotation do not change conversation configuration"
+    );
+    assert_eq!(Some(&first_binding.2), first.session_id.as_ref());
+    assert_eq!(Some(&second_binding.2), second.session_id.as_ref());
+    assert_eq!(first_binding.3, first.generation);
+    assert_eq!(second_binding.3, second.generation);
     for activation in [&first, &second] {
         assert_eq!(activation.state, LoopActivationState::Finished);
         assert_eq!(activation.launch.as_ref().unwrap().provider_id, "rara");

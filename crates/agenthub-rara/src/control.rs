@@ -15,6 +15,7 @@ pub struct InputTarget {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ControlKind {
     CreateSession,
+    ResumeSession,
     Query,
     Prompt,
     GuardedPrompt,
@@ -54,6 +55,9 @@ pub enum ControlRequest {
     RegisterSource(crate::SourceRegistration),
     GuardedPrompt(crate::GuardedPrompt),
     CreateSession,
+    ResumeSession {
+        session_id: String,
+    },
     Query,
     Prompt {
         prompt: String,
@@ -87,6 +91,7 @@ impl ControlRequest {
         match self {
             Self::RegisterSource(source) => source.kind(),
             Self::CreateSession => ControlKind::CreateSession,
+            Self::ResumeSession { .. } => ControlKind::ResumeSession,
             Self::Query => ControlKind::Query,
             Self::Prompt { .. } => ControlKind::Prompt,
             Self::GuardedPrompt(_) => ControlKind::GuardedPrompt,
@@ -130,6 +135,14 @@ impl ControlRequest {
                 )
             }
             Self::CreateSession => ("session", "create_session", None),
+            Self::ResumeSession { session_id } => {
+                crate::protocol::validate_id(session_id)?;
+                (
+                    "session",
+                    "resume_session",
+                    Some(json!({"session_id": session_id})),
+                )
+            }
             Self::Query => ("session", "query_runtime_state", None),
             Self::Cancel { .. } => ("session", "cancel_current_turn", None),
             Self::Interrupt { .. } => ("session", "interrupt_current_turn", None),
@@ -205,6 +218,39 @@ fn text(text: &str, required: bool) -> Result<(), ProtocolError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resume_targets_durable_identity_without_live_session_provenance() {
+        let request = ControlRequest::ResumeSession {
+            session_id: "conversation".into(),
+        };
+        let frame = request.frame("new-runtime", "resume", None).unwrap();
+        let value = serde_json::to_value(frame).unwrap();
+        assert_eq!(
+            value["payload"]["envelope"]["request"]["payload"]["type"],
+            "resume_session"
+        );
+        assert_eq!(
+            value["payload"]["envelope"]["request"]["payload"]["payload"]["session_id"],
+            "conversation"
+        );
+        assert!(value["payload"]["envelope"]["provenance"]["session_id"].is_null());
+        assert_eq!(request.kind(), ControlKind::ResumeSession);
+        assert!(
+            request
+                .frame("new-runtime", "resume", Some("conversation"))
+                .is_err()
+        );
+        for session_id in ["", "../ private", "native\n"] {
+            assert!(
+                ControlRequest::ResumeSession {
+                    session_id: session_id.into()
+                }
+                .frame("runtime", "resume", None)
+                .is_err()
+            );
+        }
+    }
 
     #[test]
     fn native_controls_preserve_targets_and_exact_wire_methods() {

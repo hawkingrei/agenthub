@@ -22,9 +22,10 @@ prompt/follow-up submission, fenced user answers, live permissions and turn canc
 are integrated. Authorized receipt/cursor history remains available after exit, and startup
 retires abandoned transport ownership. Fresh local Linux loop activations are admitted through
 the shared scheduler and supervised launch/cleanup path, with prompt/skill-source capability
-checks before entry. Cross-process resume, controlled MCP/App/Mem tool sources, semantic outcome
-mapping and durable approval recovery are active remaining requirements tracked in
-[the transition TODO](../todo.md). They remain capability-gated until implemented and qualified.
+checks before entry. Controlled MCP/App/Mem sources and semantic outcome mapping are implemented
+behind negotiated capabilities. Cross-process resume, durable approval recovery, upstream
+publication and assembled configured-provider qualification remain active requirements tracked in
+[the transition TODO](../todo.md).
 Remote placement, legacy Team sessions and legacy idle loops remain rejected.
 
 The broader integration contract covers:
@@ -53,8 +54,8 @@ The broader integration contract covers:
 Rara direct integration participates in the [agent loop runtime](agent-loop-runtime.md) as one
 provider adapter behind the shared scheduler. Fresh local Linux activations use the shared
 reservation, launch, structured finish and supervised cleanup lifecycle. The remaining capability
-contracts below require implementation and explicit negotiation before resume, controlled tool
-sources or durable approval recovery can be enabled.
+contracts below require implementation and explicit negotiation before resume or durable approval
+recovery can be enabled; controlled tool sources already require their negotiated source methods.
 
 - One admitted activation delivers one configured role prompt through `SubmitUserPrompt`, or
   `SubmitFollowUp` when the adapter reports a reusable live turn. Rara-internal reasoning and tool
@@ -191,6 +192,29 @@ AgentHub and Rara session identities must stay separate:
 - Rara's thread id must not replace AgentHub's agent id, actor id, Team member id, or session id.
 - Force-new-session semantics clear Rara continuity intentionally; ordinary AgentHub restart should
   attempt to resume the stored Rara continuity id when the adapter reports it is reusable.
+
+Loop continuity uses a separate durable binding, scoped by actor and Team. Its configuration
+digest includes the canonical workspace, role/Card, prompt and tool configuration, native
+launch configuration and negotiated provider/model. Activation ids, mailbox runs, current
+tasks, temporary credential paths and event cursors are not conversation identity. The native
+checkpoint independently checks its effective provider profile before accepting resume.
+
+Opening a conversation records intent under the current live, guarded execution reservation,
+after binding the local launch. Replacing the previous binding requires a durable
+`cleanup_verified` event for its exact activation and generation. Lease expiry, process status
+and an ended local session are insufficient. The accepted create/resume receipt establishes a
+new runtime event stream before the native identity is committed to the binding. Late completion
+from an expired or replaced reservation cannot update it. A resume receipt must return the exact
+requested native identity; event sequences always start in the new runtime incarnation.
+
+Resume with no previous binding creates the first conversation. Resume with a known binding
+requires matching configuration and a completed opening; missing, corrupt, incompatible or
+uncertain continuity fails without fresh fallback. An ambiguous opening remains retained for
+reconciliation. Explicit fresh policy can replace it only after verified cleanup. Conversation
+history grants no permission: each activation registers current sources and uses new credentials.
+Waiting inputs and interrupted execution must be preserved and reconciled before entry; they
+cannot be treated as idle or authorize replay of an earlier decision. Resume preflight remains
+closed until outer recovery interaction and process qualification cover these states.
 
 ### 6) Event Translation
 
@@ -869,6 +893,7 @@ Remaining local capability acceptance:
 
 ## Source Journals
 
+- [2026-10-06: Native conversation binding](../journal/2026-10-06-native-conversation-binding.md)
 - [2026-10-05: Native capability rollout](../journal/2026-10-05-native-capability-rollout.md)
 - [2026-09-18: Direct runtime loop activation](../journal/2026-09-18-native-loop-activation.md)
 - [2026-09-18: Direct runtime event storage](../journal/2026-09-18-runtime-event-storage.md)

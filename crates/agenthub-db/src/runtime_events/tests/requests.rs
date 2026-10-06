@@ -26,6 +26,75 @@ fn accepted(session: &str) -> RuntimeRequestAck {
 }
 
 #[tokio::test]
+async fn resume_ack_requires_exact_conversation_and_opens_a_new_zero_cursor() {
+    let fixture = Fixture::new().await;
+    let intent = RuntimeRequestIntent {
+        request_id: "resume",
+        kind: RuntimeRequestKind::ResumeSession,
+        target_session_id: Some("retained"),
+        expected_turn_id: None,
+    };
+    fixture.owner.prepare_request(intent, 1).await.unwrap();
+    assert!(fixture.owner.stream("retained").await.unwrap().is_none());
+    let permit = fixture.owner.mark_request_sent("resume", 2).await.unwrap();
+    for (session_id, turn_id) in [("wrong", None), ("retained", Some("old-turn"))] {
+        assert!(
+            fixture
+                .owner
+                .record_request_ack(
+                    &permit,
+                    RuntimeRequestAck::Accepted {
+                        session_id: session_id.into(),
+                        turn_id: turn_id.map(str::to_owned),
+                        last_sequence: Some(4),
+                    },
+                    3
+                )
+                .await
+                .is_err()
+        );
+    }
+    assert!(fixture.owner.stream("wrong").await.unwrap().is_none());
+    assert!(fixture.owner.stream("retained").await.unwrap().is_none());
+    fixture
+        .owner
+        .record_request_ack(
+            &permit,
+            RuntimeRequestAck::Accepted {
+                session_id: "retained".into(),
+                turn_id: None,
+                last_sequence: Some(4),
+            },
+            3,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        fixture
+            .owner
+            .stream("retained")
+            .await
+            .unwrap()
+            .unwrap()
+            .cursor()
+            .await
+            .unwrap()
+            .sequence,
+        0
+    );
+    assert_eq!(
+        fixture
+            .owner
+            .request_receipt("resume")
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        RuntimeRequestStatus::Accepted
+    );
+}
+
+#[tokio::test]
 async fn guarded_prompt_receipt_requires_an_owned_admitted_turn_and_never_queues() {
     let fixture = Fixture::new().await;
     fixture

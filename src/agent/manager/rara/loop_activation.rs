@@ -8,6 +8,7 @@ use super::*;
 pub(in crate::agent::manager) struct NativeLoopSources {
     pub launch: crate::acp::AcpLoopLaunchConfig,
     pub context: NativeLoopContext,
+    pub continuity_digest: String,
 }
 
 impl AgentManager {

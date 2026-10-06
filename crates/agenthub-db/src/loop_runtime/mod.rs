@@ -7,6 +7,7 @@ mod intake;
 mod launch;
 mod lifecycle;
 mod metrics;
+mod native_session;
 mod outcome;
 mod policy;
 mod reservation;
@@ -56,6 +57,10 @@ pub enum LoopStoreError {
     ScopeBusy(&'static str),
     #[error("invalid loop history query or cursor")]
     InvalidHistoryQuery,
+    #[error("native conversation configuration changed; explicit fresh policy is required")]
+    NativeConfigurationChanged,
+    #[error("native conversation opening is uncertain and requires reconciliation")]
+    NativeOpeningUncertain,
 }
 
 #[derive(Clone)]

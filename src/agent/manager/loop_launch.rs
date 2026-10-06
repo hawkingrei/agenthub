@@ -257,9 +257,21 @@ impl AgentManager {
             digest.update(super::rara::LOOP_SOURCE_VERSION);
             digest.update(serde_json::to_vec(&native_context)?);
         }
-        if let Some(fingerprint) = unavailable_fingerprint {
+        if let Some(fingerprint) = &unavailable_fingerprint {
             digest.update(fingerprint.as_bytes());
         }
+        let native_sources = native_context
+            .map(|context| {
+                super::rara::NativeLoopSources::new(
+                    launch.clone(),
+                    context,
+                    Path::new(workdir),
+                    &role_prompt,
+                    spec.get("required_capabilities"),
+                    unavailable_fingerprint.as_deref(),
+                )
+            })
+            .transpose()?;
         let snapshot = LoopLaunchSnapshot {
             version: 1,
             provider_id: provider.map_or("rara", |provider| provider.id).into(),
@@ -303,10 +315,7 @@ impl AgentManager {
                 run_id,
                 mem_bootstrap,
                 entry_prompt: role_prompt.entry,
-                native_sources: native_context.map(|context| super::rara::NativeLoopSources {
-                    launch: launch.clone(),
-                    context,
-                }),
+                native_sources,
             },
         );
         self.refresh_loop_credentials(&reservation).await?;
