@@ -138,6 +138,21 @@ impl Handshake {
         self.request_methods.iter().any(|entry| entry == method)
     }
 
+    /// A resumable conversation can contain a wait or uncertain execution, even
+    /// when its last observed state was idle. Negotiate the entire recovery path.
+    pub fn require_durable_resume(&self) -> Result<(), ProtocolError> {
+        self.require_methods(&[
+            "session.resume",
+            "session.query_recovery",
+            "session.resolve_recovery",
+            "session.evaluate_reentry",
+        ])?;
+        if !self.capabilities.approval_persistence {
+            return Err(ProtocolError::UnsupportedHandshake);
+        }
+        Ok(())
+    }
+
     /// Callers must require their concrete operations before relying on a family.
     pub fn require_methods(&self, methods: &[&str]) -> Result<(), ProtocolError> {
         if methods.iter().all(|method| self.supports(method)) {

@@ -59,6 +59,7 @@ struct LiveState {
     guard: Option<semantic_guard::GuardedActivation>,
     recovery: Option<agenthub_rara::RecoveryStatus>,
     recovery_sequence: u64,
+    recovery_reconciled: bool,
     pending_tool_call: Option<String>,
     entry_ready: bool,
 }
@@ -148,6 +149,7 @@ impl RaraHandle {
                 input_attempted: false,
                 guard: None,
                 recovery: None,
+                recovery_reconciled: false,
                 recovery_sequence: 0,
                 pending_tool_call: None,
                 entry_ready,

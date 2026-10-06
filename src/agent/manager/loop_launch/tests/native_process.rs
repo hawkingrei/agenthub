@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 use super::*;
 
+mod continuity;
 mod cycle;
 mod mcp;
 mod semantic_guard;

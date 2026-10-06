@@ -72,6 +72,9 @@ impl RaraHandle {
             return true;
         }
         let state = self.state.read().await;
+        if state.recovery_reconciled {
+            return true;
+        }
         if state.guard.as_ref().and_then(|guard| guard.reentry.as_ref()).is_some_and(|check| {
             check.accepted && matches!(&check.evaluation, Some((_, agenthub_rara::SemanticGuardEvent::Decided { decision })) if decision.is_decline())
         }) {

@@ -287,28 +287,105 @@ async fn native_recovery_api_requires_current_owner_and_explicit_note_without_re
         );
         assert_eq!(
             reconcile(&app, Some(&token), &payload).await,
-            StatusCode::OK
+            StatusCode::CONFLICT
         );
+        assert!(
+            runtime
+                .send_input(
+                    "Run current work explicitly",
+                    Some("after-recovery"),
+                    None,
+                    None,
+                )
+                .await
+                .is_err()
+        );
+    });
+    assert_eq!(activation.state, LoopActivationState::Finished);
+    let outcome = activation.outcome.unwrap();
+    assert_eq!(outcome.kind.as_str(), "waiting");
+    assert_eq!(outcome.wait_reason.unwrap().as_str(), "input");
+    assert!(outcome.continuation.is_none());
+    let log = std::fs::read_to_string(fixture.directory.join("native-requests.jsonl")).unwrap();
+    assert_eq!(log.matches("resolve_recovery").count(), 1);
+    assert!(!log.contains("submit_user_prompt") && !log.contains("answer_shell_approval"));
+    assert!(
+        LoopStore::new(fixture.state.db.clone())
+            .reservation(&fixture.team_id, "worker")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn native_reconciliation_finishes_only_after_committed_receipt_despite_caller_disconnect() {
+    for mode in [
+        "reentry-recovery-resolution-hold",
+        "reentry-recovery-resolution-prefix",
+    ] {
+        let fixture = fixture(mode).await;
+        std::fs::write(fixture.directory.join("native-entry-release"), "").unwrap();
+        let token = crate::api::team_tests::create_auth_token(&fixture.state).await;
+        let app = crate::api::router(fixture.state.clone());
+        let (activation, ()) = tokio::join!(fixture.execute(mode), async {
+            marker(&fixture, "native-entry-evaluated").await;
+            let view = tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let local: Option<String> = sqlx::query_scalar("SELECT local_session_id FROM loop_native_sessions WHERE actor_id = 'worker'")
+                        .fetch_optional(&fixture.state.db).await.unwrap();
+                    if let Some(local) = local {
+                        let (status, view) = query(&app, Some(&token), &local).await;
+                        if status == StatusCode::OK { break view; }
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            }).await.unwrap();
+            let payload = json!({"local_session_id":view["local_session_id"],
+                "target":{"runtime_id":view["runtime_id"],"session_id":view["session_id"],
+                    "recovery_id":view["recovery"]["blocked"]["recovery_id"]},
+                "note":"Executor stopped; uncertain effects reviewed"});
+            let request =
+                tokio::spawn(async move { reconcile(&app, Some(&token), &payload).await });
+            marker(&fixture, "native-resolution-recorded").await;
+            if mode.ends_with("hold") {
+                let store = LoopStore::new(fixture.state.db.clone());
+                let owner = store
+                    .reservation(&fixture.team_id, "worker")
+                    .await
+                    .unwrap()
+                    .unwrap();
+                let current = store
+                    .activation(&fixture.team_id, owner.activation_id.as_deref().unwrap())
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(current.state, LoopActivationState::Running);
+                assert!(
+                    current.outcome.is_none(),
+                    "an event without its receipt cannot finish"
+                );
+                request.abort();
+                assert!(request.await.unwrap_err().is_cancelled());
+                std::fs::write(fixture.directory.join("native-resolution-release"), "").unwrap();
+            } else {
+                assert_eq!(request.await.unwrap(), StatusCode::CONFLICT);
+            }
+        });
+        if mode.ends_with("hold") {
+            assert_eq!(activation.state, LoopActivationState::Finished);
+            assert_eq!(
+                activation.outcome.unwrap().wait_reason.unwrap().as_str(),
+                "input"
+            );
+        } else {
+            assert_eq!(activation.state, LoopActivationState::Interrupted);
+            assert!(activation.outcome.is_none());
+        }
         let log = std::fs::read_to_string(fixture.directory.join("native-requests.jsonl")).unwrap();
         assert_eq!(log.matches("resolve_recovery").count(), 1);
         assert!(!log.contains("submit_user_prompt") && !log.contains("answer_shell_approval"));
-        let (status, current) = query(&app, Some(&token), &local).await;
-        assert_eq!(status, StatusCode::OK);
-        assert!(current["recovery"]["blocked"].is_null());
-        assert_eq!(
-            current["recovery"]["last_resolution"]["note"],
-            payload["note"]
-        );
-        runtime
-            .send_input(
-                "Run current work explicitly",
-                Some("after-recovery"),
-                None,
-                None,
-            )
-            .await
-            .unwrap();
-    });
-    assert_eq!(activation.state, LoopActivationState::Interrupted);
-    fixture.close().await;
+        fixture.close().await;
+    }
 }
