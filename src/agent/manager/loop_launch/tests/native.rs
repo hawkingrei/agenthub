@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 use super::*;
 
 mod input;
+mod opening;
 mod recovery;
 mod semantic_guard;
 mod sources;

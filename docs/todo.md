@@ -38,9 +38,11 @@ Delivery order and acceptance: [native capability rollout](journal/2026-10-05-na
   [native semantic outcomes](journal/2026-10-06-native-semantic-outcomes.md).
 - [ ] Support cross-process provider continuity with a new fenced activation, preserved task/IM
   identity and verified old-owner cleanup before replacement execution.
-  Durable opening/binding and exact-session resume receipts are integrated; resume preflight
-  remains closed pending recovery interaction and actual-process acceptance. Evidence:
-  [native conversation binding](journal/2026-10-06-native-conversation-binding.md).
+  Durable opening/binding and exact-session resume receipts are integrated. A committed opening
+  can repair a missing binding after verified cleanup; genuinely unknown results stay blocked.
+  Resume preflight remains closed pending assembled recovery and actual-process acceptance. Evidence:
+  [native conversation binding](journal/2026-10-06-native-conversation-binding.md) and
+  [native opening reconciliation](journal/2026-10-07-native-opening-reconciliation.md).
 - [ ] Persist and recover pending approvals with exact ownership, explicit decision receipts and
   no automatic replay of uncertain tool execution or approval answers.
   The outer consumer now gates restored callbacks on current sources, live authority and

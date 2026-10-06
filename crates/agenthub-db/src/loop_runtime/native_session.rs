@@ -6,6 +6,84 @@ use sqlx::{Connection, Row, Sqlite, Transaction};
 use super::{LoopStore, LoopStoreError};
 
 impl LoopStore {
+    /// Return only the previous exact launch needing repair. This is a lookup,
+    /// never permission to scan native checkpoint directories or retry creation.
+    pub async fn native_opening_to_reconcile(
+        &self,
+        expected: &LoopReservation,
+        configuration_digest: &str,
+        now: i64,
+    ) -> anyhow::Result<Option<String>> {
+        let mut tx = self.pool.begin().await?;
+        let launch = require_opening_owner(&mut tx, expected, now).await?;
+        if launch.session_policy != LoopSessionPolicy::Resume {
+            return Ok(None);
+        }
+        let local = sqlx::query_scalar(
+            "SELECT n.local_session_id FROM loop_native_sessions n \
+             JOIN agent_sessions s ON s.id = n.local_session_id AND s.agent_id = n.actor_id \
+             WHERE n.actor_id = ? AND n.team_id = ? AND n.generation < ? \
+             AND n.configuration_digest = ? AND n.state = 'opening' \
+             AND EXISTS (SELECT 1 FROM loop_activation_events e WHERE e.activation_id = n.activation_id \
+                         AND e.generation = n.generation AND e.kind = 'cleanup_verified')",
+        )
+        .bind(&expected.actor_id).bind(&expected.team_id).bind(expected.generation)
+        .bind(configuration_digest).fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(local)
+    }
+
+    /// Repair the receipt-to-binding crash window without creating execution
+    /// authority. The next opening still needs current scope/configuration checks.
+    pub async fn reconcile_native_opening(
+        &self,
+        expected: &LoopReservation,
+        evidence: &crate::runtime_events::RuntimeOpeningEvidence,
+        now: i64,
+    ) -> anyhow::Result<()> {
+        use crate::runtime_events::RuntimeRequestKind;
+
+        let mut connection = self.pool.acquire().await?;
+        sqlx::query("PRAGMA synchronous = FULL")
+            .execute(&mut *connection)
+            .await?;
+        let mut tx = connection.begin_with("BEGIN IMMEDIATE").await?;
+        require_opening_owner(&mut tx, expected, now).await?;
+        let previous = sqlx::query(
+            "SELECT n.* FROM loop_native_sessions n \
+             JOIN agent_sessions s ON s.id = n.local_session_id AND s.agent_id = n.actor_id \
+             WHERE n.actor_id = ? AND n.team_id = ? AND n.local_session_id = ? AND n.generation < ? \
+             AND EXISTS (SELECT 1 FROM loop_activation_events e WHERE e.activation_id = n.activation_id \
+                         AND e.generation = n.generation AND e.kind = 'cleanup_verified')",
+        )
+        .bind(&expected.actor_id).bind(&expected.team_id).bind(&evidence.local_session_id)
+        .bind(expected.generation).fetch_optional(&mut *tx).await?
+        .ok_or(LoopStoreError::NativeOpeningUncertain)?;
+        let native: Option<String> = previous.try_get("native_session_id")?;
+        let state: &str = previous.try_get("state")?;
+        if state == "bound" && native.as_ref() == Some(&evidence.native_session_id) {
+            return Ok(());
+        }
+        let valid = match evidence.kind {
+            RuntimeRequestKind::CreateSession => native.is_none(),
+            RuntimeRequestKind::ResumeSession => {
+                native.as_ref() == Some(&evidence.native_session_id)
+            }
+            _ => false,
+        };
+        anyhow::ensure!(
+            state == "opening" && valid,
+            LoopStoreError::NativeOpeningUncertain
+        );
+        sqlx::query("UPDATE loop_native_sessions SET native_session_id = ?, state = 'bound', updated_at = ? WHERE actor_id = ?")
+            .bind(&evidence.native_session_id).bind(now).bind(&expected.actor_id).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO loop_activation_events(activation_id, kind, generation, created_at) VALUES (?, 'native_opening_reconciled', ?, ?)")
+            .bind(previous.try_get::<&str, _>("activation_id")?).bind(previous.try_get::<i64, _>("generation")?)
+            .bind(now).execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Consume one opening attempt before sending create/resume. None means first/fresh
     /// conversation; an existing resume binding never falls back to creating another one.
     pub async fn begin_native_session(
