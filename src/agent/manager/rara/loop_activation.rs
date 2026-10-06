@@ -18,7 +18,7 @@ impl AgentManager {
         reservation: &LoopReservation,
         context: &AcpActorSkillContext,
         entry: String,
-    ) -> anyhow::Result<String> {
+    ) -> anyhow::Result<Option<String>> {
         let runtime = {
             let handles = self.inner.read().await;
             let handle = handles
@@ -27,7 +27,7 @@ impl AgentManager {
                 .ok_or_else(|| anyhow::anyhow!("direct loop session ownership is unavailable"))?;
             match &handle.input {
                 AgentInput::Rara(runtime) => runtime.clone(),
-                AgentInput::Acp(_) => return Ok(entry),
+                AgentInput::Acp(_) => return Ok(Some(entry)),
                 AgentInput::Stdin(_) => anyhow::bail!("loop entry requires a supported runtime"),
             }
         };
@@ -115,6 +115,10 @@ impl AgentManager {
         runtime
             .configure_loop_guard(guard, task_id, request_id)
             .await?;
-        Ok(prompt.into())
+        if runtime.enter_recovered_loop(prompt).await? {
+            Ok(None)
+        } else {
+            Ok(Some(prompt.into()))
+        }
     }
 }

@@ -26,6 +26,58 @@ fn accepted(session: &str) -> RuntimeRequestAck {
 }
 
 #[tokio::test]
+async fn recovery_control_receipts_cannot_admit_a_worker_turn_or_change_session() {
+    let fixture = Fixture::new().await;
+    for (id, kind) in [
+        ("query-recovery", RuntimeRequestKind::QueryRecovery),
+        ("resolve-recovery", RuntimeRequestKind::ResolveRecovery),
+        ("evaluate-reentry", RuntimeRequestKind::EvaluateReentry),
+    ] {
+        fixture
+            .owner
+            .prepare_request(intent(id, kind), 1)
+            .await
+            .unwrap();
+        let permit = fixture.owner.mark_request_sent(id, 2).await.unwrap();
+        for (session_id, turn_id) in [("foreign", None), ("native", Some("worker-turn"))] {
+            assert!(
+                fixture
+                    .owner
+                    .record_request_ack(
+                        &permit,
+                        RuntimeRequestAck::Accepted {
+                            session_id: session_id.into(),
+                            turn_id: turn_id.map(str::to_owned),
+                            last_sequence: Some(4),
+                        },
+                        3
+                    )
+                    .await
+                    .is_err()
+            );
+        }
+        let ack = RuntimeRequestAck::Accepted {
+            session_id: "native".into(),
+            turn_id: None,
+            last_sequence: Some(4),
+        };
+        fixture
+            .owner
+            .record_request_ack(&permit, ack.clone(), 3)
+            .await
+            .unwrap();
+        let receipt = fixture.owner.request_receipt(id).await.unwrap().unwrap();
+        assert_eq!(receipt.kind, kind);
+        assert_eq!(receipt.ack, Some(ack));
+        assert_eq!(
+            fixture.stream.cursor().await.unwrap().sequence,
+            0,
+            "an ACK cannot advance durable event history"
+        );
+    }
+}
+
+#[tokio::test]
 async fn resume_ack_requires_exact_conversation_and_opens_a_new_zero_cursor() {
     let fixture = Fixture::new().await;
     let intent = RuntimeRequestIntent {

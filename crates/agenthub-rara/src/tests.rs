@@ -52,10 +52,21 @@ async fn pinned_real_process_frames_preserve_event_session_and_original_identity
 fn handshake_checks_methods_and_lifetimes_instead_of_version_label_alone() {
     let hello = hello();
     hello.validate().unwrap();
-    assert!(!hello.supports("session.resume"));
-    assert!(!hello.capabilities.approval_persistence);
+    assert!(hello.supports("session.resume"));
+    assert!(hello.capabilities.approval_persistence);
+    hello
+        .require_methods(&[
+            "session.query_recovery",
+            "session.resolve_recovery",
+            "session.evaluate_reentry",
+        ])
+        .unwrap();
+    let mut legacy = hello.clone();
+    legacy
+        .request_methods
+        .retain(|method| method != "session.resume");
     assert_eq!(
-        hello.require_methods(&["session.resume"]),
+        legacy.require_methods(&["session.resume"]),
         Err(ProtocolError::UnsupportedHandshake)
     );
     let mut missing = hello.clone();

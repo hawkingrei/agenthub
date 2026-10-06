@@ -34,6 +34,8 @@ pub enum EventEffect {
     None,
     Created,
     Snapshot(SessionSnapshot),
+    Recovery(crate::RecoveryStatus),
+    Reentry(crate::ReentryEvaluation),
     TurnStarted {
         turn_id: String,
     },
@@ -378,6 +380,23 @@ impl EventProjector {
         effect: &mut EventEffect,
     ) -> Result<(), ProtocolError> {
         match event {
+            SessionEvent::RecoveryState { state } => {
+                require_control_origin(frame)?;
+                state.validate()?;
+                history.push(update(json!({"event":"recovery_state", "state":state})));
+                *effect = EventEffect::Recovery(state);
+            }
+            SessionEvent::ReentryEvaluated { evaluation } => {
+                require_control_origin(frame)?;
+                evaluation.validate()?;
+                if evaluation.origin.runtime_id != frame.runtime_id {
+                    return Err(ProtocolError::InvalidTarget);
+                }
+                history.push(update(
+                    json!({"event":"reentry_evaluated", "evaluation":evaluation}),
+                ));
+                *effect = EventEffect::Reentry(evaluation);
+            }
             SessionEvent::Created { session_id } | SessionEvent::Resumed { session_id } => {
                 if session_id != self.session_id {
                     return Err(ProtocolError::InvalidTarget);
@@ -699,6 +718,12 @@ impl SessionSnapshot {
             SessionPhase::Running { turn_id } | SessionPhase::Cancelling { turn_id } => {
                 validate_id(turn_id)?
             }
+            SessionPhase::RecoveryRequired { recovery_id } => {
+                crate::recovery::validate_recovery_id(recovery_id)?;
+                if self.pending_input.is_some() {
+                    return Err(ProtocolError::InvalidTarget);
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -710,12 +735,25 @@ impl SessionPhase {
         match self {
             Self::Idle => "idle",
             Self::AwaitingInput { .. } => "awaiting_input",
+            Self::RecoveryRequired { .. } => "recovery_required",
             Self::Running { .. } => "running",
             Self::Cancelling { .. } => "cancelling",
             Self::Closing => "closing",
             Self::Closed => "closed",
         }
     }
+}
+
+fn require_control_origin(frame: &EventFrame) -> Result<(), ProtocolError> {
+    if frame.event.turn_id.is_some()
+        || frame.event.provenance["session_id"].as_str() != Some(frame.session_id.as_str())
+        || frame.event.provenance["controller"] != "runtime"
+        || frame.event.provenance["trust"] != "trusted"
+        || frame.event.provenance["authorship"] != "runtime"
+    {
+        return Err(ProtocolError::InvalidTarget);
+    }
+    Ok(())
 }
 
 fn required_turn(frame: &EventFrame) -> Result<String, ProtocolError> {

@@ -41,10 +41,34 @@ impl RaraHandle {
         target: Option<InputTarget>,
         origin: Option<Value>,
     ) -> anyhow::Result<()> {
+        let _operation = self.authorize_loop_input().await?;
         let _gate = self.input_gate.lock().await;
         self.await_admitted_events().await?;
+        self.verify_loop_input().await?;
+        let refresh_recovery = {
+            let state = self.state.read().await;
+            state.input_attempted
+                && state.entry_ready
+                && matches!(state.phase, SessionPhase::Idle)
+                && self.client.handshake().supports("session.query_recovery")
+                && self.client.handshake().capabilities.approval_persistence
+        };
+        if refresh_recovery {
+            // Terminal events do not necessarily include the durable recovery marker.
+            self.query_recovery_state().await?;
+            self.verify_loop_input().await?;
+        }
         let request = {
             let state = self.state.read().await;
+            anyhow::ensure!(
+                state.entry_ready || (target.is_none() && !state.input_attempted
+                    && state.guard.as_ref().is_some_and(|guard| guard.request_id == id && guard.reentry.is_none())),
+                AgentSendInputError::NativeEntryPending
+            );
+            anyhow::ensure!(
+                !matches!(state.phase, SessionPhase::RecoveryRequired { .. }),
+                AgentSendInputError::NativeRecoveryRequired
+            );
             match target {
                 Some(ref target) => {
                     let pending = state
@@ -175,6 +199,16 @@ impl RaraHandle {
                 && let Some(guard) = &mut self.state.write().await.guard
             {
                 guard.accepted_turn = Some(turn.clone());
+            }
+            if matches!(
+                (ack, &request),
+                (
+                    RuntimeRequestAck::Accepted { .. },
+                    ControlRequest::GuardedPrompt(_)
+                )
+            ) {
+                self.state.write().await.entry_ready = true;
+                self.publish_pending_permission().await?;
             }
             if let (
                 RuntimeRequestAck::Accepted { .. },

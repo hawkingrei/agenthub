@@ -43,6 +43,10 @@ Delivery order and acceptance: [native capability rollout](journal/2026-10-05-na
   [native conversation binding](journal/2026-10-06-native-conversation-binding.md).
 - [ ] Persist and recover pending approvals with exact ownership, explicit decision receipts and
   no automatic replay of uncertain tool execution or approval answers.
+  The outer consumer now gates restored callbacks on current sources, live authority and
+  matching durable reentry receipts/events; explicit reconciliation has an authenticated API.
+  UI recovery, assembled restart qualification and standalone continuity remain open. Evidence:
+  [native recovery entry](journal/2026-10-06-native-recovery-entry.md).
 - [ ] Qualify the assembled path with the installed runtime and configured provider: controlled
   tools, restart/resume, approval recovery, semantic outcomes and nested-subteam isolation.
 

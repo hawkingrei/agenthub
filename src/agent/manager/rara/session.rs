@@ -18,6 +18,9 @@ use uuid::Uuid;
 mod controls;
 mod input;
 mod permissions;
+mod reconciliation;
+mod recovery;
+mod recovery_query;
 mod semantic_guard;
 mod sources;
 
@@ -42,6 +45,7 @@ pub struct RaraHandle {
     permission: Arc<Mutex<Option<permissions::LivePermission>>>,
     state: Arc<RwLock<LiveState>>,
     delivery: watch::Sender<Option<bool>>,
+    loop_owner: Option<recovery::LoopOwner>,
 }
 
 struct LiveState {
@@ -53,6 +57,10 @@ struct LiveState {
     terminal_turn: bool,
     input_attempted: bool,
     guard: Option<semantic_guard::GuardedActivation>,
+    recovery: Option<agenthub_rara::RecoveryStatus>,
+    recovery_sequence: u64,
+    pending_tool_call: Option<String>,
+    entry_ready: bool,
 }
 
 struct Replay {
@@ -106,6 +114,16 @@ impl RaraHandle {
         }
         let (delivery, _) = watch::channel(None);
         let (progress, _) = watch::channel(0);
+        let loop_owner = if let Some(reservation) = reservation {
+            Some(recovery::LoopOwner {
+                store: agenthub_db::loop_runtime::LoopStore::new(manager.db.clone()),
+                reservation,
+                operations: manager.loop_operation_gate(agent_id).await,
+            })
+        } else {
+            None
+        };
+        let entry_ready = loop_owner.is_none();
         Ok(Self {
             client,
             store,
@@ -129,8 +147,13 @@ impl RaraHandle {
                 terminal_turn: false,
                 input_attempted: false,
                 guard: None,
+                recovery: None,
+                recovery_sequence: 0,
+                pending_tool_call: None,
+                entry_ready,
             })),
             delivery,
+            loop_owner,
         })
     }
 
@@ -273,8 +296,56 @@ impl RaraHandle {
         state.sequence = sequence;
         match effect {
             EventEffect::Snapshot(snapshot) => {
+                if state.pending != snapshot.pending_input {
+                    state.pending_tool_call = None;
+                }
                 state.phase = snapshot.phase;
                 state.pending = snapshot.pending_input;
+            }
+            EventEffect::Recovery(recovery) => {
+                if let Some(blocked) = &recovery.blocked {
+                    anyhow::ensure!(
+                        state.pending.is_none(),
+                        "native recovery conflicts with pending input"
+                    );
+                    state.phase = SessionPhase::RecoveryRequired {
+                        recovery_id: blocked.recovery_id.clone(),
+                    };
+                } else if matches!(state.phase, SessionPhase::RecoveryRequired { .. }) {
+                    state.phase = SessionPhase::Idle;
+                }
+                anyhow::ensure!(
+                    recovery.waiting_turn_id.as_deref()
+                        == state
+                            .pending
+                            .as_ref()
+                            .map(|pending| pending.turn_id.as_str()),
+                    "native recovery waiting identity changed"
+                );
+                state.recovery = Some(recovery);
+                state.recovery_sequence = sequence;
+            }
+            EventEffect::Reentry(evaluation) => {
+                anyhow::ensure!(
+                    recovery::matches_target(&evaluation.target, &state),
+                    "native reentry result targets a changed session phase"
+                );
+                let guard = state.guard.as_mut().ok_or_else(|| {
+                    anyhow::anyhow!("native reentry has no configured activation")
+                })?;
+                anyhow::ensure!(
+                    evaluation.origin.request_id == guard.request_id,
+                    "native reentry request changed"
+                );
+                let check = guard
+                    .reentry
+                    .as_mut()
+                    .ok_or_else(|| anyhow::anyhow!("native reentry was not requested"))?;
+                anyhow::ensure!(
+                    check.target == evaluation.target && check.evaluation.is_none(),
+                    "native reentry target or result changed"
+                );
+                check.evaluation = Some((sequence, evaluation.result));
             }
             EventEffect::TurnStarted { turn_id } => {
                 if let Some(guard) = &mut state.guard {
@@ -316,7 +387,10 @@ impl RaraHandle {
                 pending,
                 tool_call_id,
             } => {
-                interaction = Some((pending.clone(), tool_call_id));
+                state.pending_tool_call = Some(tool_call_id.clone());
+                if state.entry_ready {
+                    interaction = Some((pending.clone(), tool_call_id));
+                }
                 state.terminal_turn = false;
                 state.phase = SessionPhase::AwaitingInput {
                     turn_id: pending.turn_id.clone(),
@@ -332,6 +406,7 @@ impl RaraHandle {
                 .is_some_and(|p| p.turn_id == waiting_turn) =>
             {
                 state.pending = None;
+                state.pending_tool_call = None;
                 state.terminal_turn = terminal;
                 if matches!(&state.phase, SessionPhase::AwaitingInput { turn_id } if turn_id == &waiting_turn)
                 {

@@ -68,9 +68,9 @@ async fn native_process_transport_round_trip() {
     .await
     .unwrap();
     let runtime_id = connection.client.handshake().runtime_id.clone();
-    assert!(!connection.client.handshake().supports("session.resume"));
+    assert!(connection.client.handshake().supports("session.resume"));
     assert!(
-        !connection
+        connection
             .client
             .handshake()
             .capabilities

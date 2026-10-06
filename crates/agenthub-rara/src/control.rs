@@ -17,6 +17,9 @@ pub enum ControlKind {
     CreateSession,
     ResumeSession,
     Query,
+    QueryRecovery,
+    ResolveRecovery,
+    EvaluateReentry,
     Prompt,
     GuardedPrompt,
     FollowUp,
@@ -59,6 +62,9 @@ pub enum ControlRequest {
         session_id: String,
     },
     Query,
+    QueryRecovery,
+    ResolveRecovery(crate::RecoveryResolution),
+    EvaluateReentry(crate::ReentryGuard),
     Prompt {
         prompt: String,
     },
@@ -93,6 +99,9 @@ impl ControlRequest {
             Self::CreateSession => ControlKind::CreateSession,
             Self::ResumeSession { .. } => ControlKind::ResumeSession,
             Self::Query => ControlKind::Query,
+            Self::QueryRecovery => ControlKind::QueryRecovery,
+            Self::ResolveRecovery(_) => ControlKind::ResolveRecovery,
+            Self::EvaluateReentry(_) => ControlKind::EvaluateReentry,
             Self::Prompt { .. } => ControlKind::Prompt,
             Self::GuardedPrompt(_) => ControlKind::GuardedPrompt,
             Self::FollowUp { .. } => ControlKind::FollowUp,
@@ -144,6 +153,26 @@ impl ControlRequest {
                 )
             }
             Self::Query => ("session", "query_runtime_state", None),
+            Self::QueryRecovery => ("session", "query_recovery", None),
+            Self::ResolveRecovery(resolution) => {
+                resolution.validate()?;
+                (
+                    "session",
+                    "resolve_recovery",
+                    Some(
+                        serde_json::to_value(resolution)
+                            .map_err(|_| ProtocolError::Serialization)?,
+                    ),
+                )
+            }
+            Self::EvaluateReentry(request) => {
+                request.validate()?;
+                (
+                    "session",
+                    "evaluate_reentry",
+                    Some(serde_json::to_value(request).map_err(|_| ProtocolError::Serialization)?),
+                )
+            }
             Self::Cancel { .. } => ("session", "cancel_current_turn", None),
             Self::Interrupt { .. } => ("session", "interrupt_current_turn", None),
             Self::Prompt { prompt } | Self::FollowUp { prompt } => {

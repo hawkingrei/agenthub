@@ -216,6 +216,46 @@ Waiting inputs and interrupted execution must be preserved and reconciled before
 cannot be treated as idle or authorize replay of an earlier decision. Resume preflight remains
 closed until outer recovery interaction and process qualification cover these states.
 
+Restored interaction entry must register current sources before accepting an answer.
+The tool-free `session.evaluate_reentry` control targets the exact waiting turn or
+recovery token with current role/work context. Its server-owned runtime/request origin,
+target and advisory result must match the durable request receipt and committed event
+prefix before any callback becomes actionable. The control cannot consume a wait,
+resolve uncertain effects or admit worker execution. Declines use the existing canonical
+semantic finish while shutdown preserves unresolved native state. Every later answer
+must still pass current activation, generation, membership and lease checks.
+Shared permission publication holds the response-delivery lock until its durable row,
+session status and live callback are ready. An immediate review waits for registration
+before delivering its answer.
+
+Interrupted recovery remains blocked until an operator supplies a bounded reconciliation
+note for the exact current token after old executor/child retirement and effect inspection.
+A compatible entry verdict is not reconciliation. Applying the resolution must commit its
+receipt and recovery-state prefix before accepting an explicit new prompt; previous input
+and approvals are never replayed automatically.
+
+The authenticated `GET /api/agents/{id}/runtime/recovery?local_session_id=...`
+endpoint requires `RuntimeOperate` and the exact current local launch. It queries
+the native owner and waits for the matching durable event prefix before returning
+local/runtime/native identities and typed recovery status. A running turn, pending
+entry or stale owner returns a conflict. Queries grant no execution authority.
+Later idle inputs also refresh durable recovery state when the provider supports
+it: a terminal or cancellation event alone cannot prove that a new prompt is safe.
+
+The authenticated `POST /api/agents/{id}/runtime/recovery` endpoint requires
+`RuntimeOperate`, the current `local_session_id`, a `target` containing current
+`runtime_id`, native `session_id` and `recovery_id`, and a nonempty single-line
+`note` of at most 4096 UTF-8 bytes. Pending entry, stale ownership and an unconfirmed
+resolution return a conflict. The daemon owns admitted reconciliation through caller
+disconnects. An identical confirmed resolution is idempotent; it never sends a new
+prompt. The operator supplies any subsequent input explicitly.
+
+Native loop input and approval admission hold the existing operation guard and verify
+the current activation, generation, local session, membership and lease after the
+input queue/event barrier. Cleanup cannot release that execution owner while an
+admitted control is settling. Historical decisions are bounded conversation evidence,
+not telemetry or a grant of current input authority.
+
 ### 6) Event Translation
 
 Rara app-server events should be normalized into AgentHub's existing agent event persistence and
@@ -281,13 +321,15 @@ provider raw JSON must stay redacted from diagnostics metadata by default.
   timeout.
 
 The compatible protocol fixture is pinned to upstream commit
-`5585583a6674cb0d6ac36d5be98744dd75589871`. Controlled-source delivery is tracked in
+`178dfecf6599ad536f53f5f207d37d547b510a6b`. Controlled-source delivery is tracked in
 [the prerequisite PR](https://github.com/linkerdog/rara/pull/1058).
 Package version `0.0.22` alone does not identify this protocol. The version 1 envelope
 uses `type`/`payload`; the handshake carries `runtime_id`, `runtime_version`,
 `request_methods`, family lists and explicit receipt/replay/approval lifetimes.
-The tested build advertises runtime-only receipts and replay, and no persistent
-approvals or session resume. Missing required capabilities fail startup visibly.
+The tested Unix build advertises runtime-only general receipts and replay, durable
+approval decisions, session resume and explicit recovery/reentry controls. Native
+capabilities do not establish outer scope, cleanup or UI recovery by themselves.
+Missing required capabilities fail startup visibly.
 
 Frames contain at most 1,048,576 UTF-8 payload bytes, excluding LF or CRLF delimiters.
 Blank, partial-EOF, malformed and oversized frames fail the transport. A cancelled
@@ -372,7 +414,7 @@ preserves the proxy's uncertain operation record and does not authorize retries.
 Semantic shutdown must retire source children; the outer supervisor independently
 proves process-tree cleanup before replacement execution.
 
-The `native-loop-v4` source contract is part of the configuration digest and entry version.
+The `native-loop-v5` source contract is part of the configuration digest and entry version.
 It keeps activation, local launch, native runtime and native session identities distinct;
 native subagents receive no independent outer membership, mailbox or execution credentials.
 An ordinary completed turn is insufficient to finish an activation: the existing structured
@@ -380,8 +422,9 @@ finish service owns that outcome. A terminal turn without an outcome becomes int
 only after existing supervised cleanup. A live input/approval wait keeps its callback owner;
 canceling that wait may end the native turn through input-discarded alone.
 
-The pinned build supports typed semantic guard input/events. It still has no cross-process
-resume or durable approval recovery. Resume policies therefore fail preflight. MCP/App/Mem launch validation
+The pinned build supports typed semantic guard input/events, native session resume and
+durable approval decisions. Outer resume policies still fail preflight pending assembled
+recovery and process qualification. MCP/App/Mem launch validation
 reuses the shared binding rules; older runtimes without the negotiated source controls
 fail startup before the entry prompt. Loop launches disable ambient extension discovery
 and native memory facilities. They never replace missing controlled sources with ambient configuration.

@@ -13,6 +13,7 @@ mod native;
 mod permissions;
 mod projection;
 mod questions;
+mod recovery;
 mod sources;
 
 const PEER: &str = r#"#!/usr/bin/env python3

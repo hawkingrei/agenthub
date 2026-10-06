@@ -8,6 +8,7 @@ pub(super) struct GuardedActivation {
     pub task_id: Option<String>,
     pub accepted_turn: Option<String>,
     pub completed: Option<(String, SemanticGuardDecision)>,
+    pub reentry: Option<super::recovery::ReentryCheck>,
 }
 
 impl RaraHandle {
@@ -30,6 +31,7 @@ impl RaraHandle {
             task_id,
             accepted_turn: None,
             completed: None,
+            reentry: None,
         });
         Ok(())
     }
@@ -43,6 +45,16 @@ impl RaraHandle {
             return None;
         }
         let state = self.state.read().await;
+        if let Some(guard) = &state.guard
+            && let Some(check) = &guard.reentry
+            && check.accepted
+            && state.sequence >= self.ack_cursor.load(Ordering::Acquire)
+            && let Some((_, agenthub_rara::SemanticGuardEvent::Decided { decision })) =
+                &check.evaluation
+            && decision.is_decline()
+        {
+            return Some((decision.clone(), guard.task_id.clone()));
+        }
         if !state.terminal_turn
             || state.pending.is_some()
             || !matches!(state.phase, SessionPhase::Idle)

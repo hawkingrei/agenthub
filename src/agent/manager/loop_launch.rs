@@ -432,16 +432,18 @@ impl AgentManager {
             reservation.activation_id.as_deref().unwrap_or_default(),
             reservation.generation
         );
-        self.send_input_inner(
-            &reservation.actor_id,
-            &entry,
-            &[],
-            Some(&submission),
-            Some(&session_id),
-            None,
-            None,
-        )
-        .await?;
+        if let Some(entry) = entry {
+            self.send_input_inner(
+                &reservation.actor_id,
+                &entry,
+                &[],
+                Some(&submission),
+                Some(&session_id),
+                None,
+                None,
+            )
+            .await?;
+        }
         let cancellation = self.daemon_tasks.runtime_cancellation();
         loop {
             tokio::select! {

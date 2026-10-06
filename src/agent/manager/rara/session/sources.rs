@@ -8,16 +8,22 @@ impl RaraHandle {
         sources: Vec<SourceRegistration>,
     ) -> anyhow::Result<()> {
         SourceRegistration::validate_batch(&sources, self.client.handshake())?;
+        let _operation = self.authorize_loop_input().await?;
         let _gate = self.input_gate.lock().await;
         self.await_admitted_events().await?;
+        self.verify_loop_input().await?;
         {
             let mut state = self.state.write().await;
             anyhow::ensure!(
                 !state.sources_registered
                     && !state.input_attempted
                     && !state.terminal_turn
-                    && matches!(state.phase, SessionPhase::Idle)
-                    && state.pending.is_none(),
+                    && matches!(
+                        state.phase,
+                        SessionPhase::Idle
+                            | SessionPhase::AwaitingInput { .. }
+                            | SessionPhase::RecoveryRequired { .. }
+                    ),
                 "direct loop sources require an unused native session"
             );
             // A partially acknowledged bootstrap cannot be retried on this session.
@@ -66,6 +72,11 @@ impl RaraHandle {
             return true;
         }
         let state = self.state.read().await;
+        if state.guard.as_ref().and_then(|guard| guard.reentry.as_ref()).is_some_and(|check| {
+            check.accepted && matches!(&check.evaluation, Some((_, agenthub_rara::SemanticGuardEvent::Decided { decision })) if decision.is_decline())
+        }) {
+            return true;
+        }
         state.terminal_turn && state.pending.is_none() && matches!(state.phase, SessionPhase::Idle)
     }
 }

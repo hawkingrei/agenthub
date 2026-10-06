@@ -84,6 +84,10 @@ impl RaraHandle {
             ),
         };
         let mut active = self.permission.lock().await;
+        let state = self.state.read().await;
+        if !state.entry_ready || state.pending.as_ref() != Some(&pending) {
+            return Ok(());
+        }
         if active
             .as_ref()
             .is_some_and(|active| active.pending == pending)
@@ -178,10 +182,14 @@ impl RaraHandle {
             "responded_at":Utc::now().timestamp()}),
         )
         .await?;
+        let _operation = self.authorize_loop_input().await?;
         let _gate = self.input_gate.lock().await;
         self.await_admitted_events().await?;
-        if cancellation.is_cancelled() || self.state.read().await.pending.as_ref() != Some(&pending)
-        {
+        self.verify_loop_input().await?;
+        if cancellation.is_cancelled() || {
+            let state = self.state.read().await;
+            !state.entry_ready || state.pending.as_ref() != Some(&pending)
+        } {
             self.emit_history(json!({"type":"permission_control_expired","permission_id":id}))
                 .await?;
             return Ok(());
