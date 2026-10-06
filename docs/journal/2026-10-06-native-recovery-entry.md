@@ -93,7 +93,8 @@ checks pass, and all 112 local links in the changed documentation resolve.
 
 ## Follow-Ups
 
-Expose recovery actions in the browser, qualify the assembled actual-process resume path,
-reconcile ambiguous conversation openings, and finish standalone continuity plus installed/
+Browser actions are recorded in [native recovery controls](2026-10-07-native-recovery-controls.md).
+Qualify the assembled actual-process resume path, reconcile ambiguous conversation openings,
+and finish standalone continuity plus installed/
 configured-provider acceptance. Upstream publication still needs its existing exact-
 destination authorization. None of these remaining milestones is closed by this checkpoint.

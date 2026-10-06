@@ -29,6 +29,7 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-10-07: Native recovery controls](2026-10-07-native-recovery-controls.md): shared browser review, current target binding and stale-response isolation without input replay.
 - [2026-10-06: Native recovery entry](2026-10-06-native-recovery-entry.md): restored callback admission, current executor checks and explicit nonreplaying recovery reconciliation.
 - [2026-10-06: Native semantic outcomes](2026-10-06-native-semantic-outcomes.md): guarded activation delivery, strict event/ACK correlation and atomic clarification reply waits.
 - [2026-10-06: Native conversation binding](2026-10-06-native-conversation-binding.md): durable opening intent, stable scoped configuration and exact cleanup/receipt fencing before conversation reuse.
