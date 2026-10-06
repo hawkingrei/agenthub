@@ -26,6 +26,7 @@ PR #1168 merged the existing native slices 16-18 into main. All remaining local 
 capabilities and upstream prerequisites are active again. The completed ACP rollout remains the
 integration baseline. Contract: [direct runtime integration](features/rara-direct-integration.md).
 Delivery order and acceptance: [native capability rollout](journal/2026-10-05-native-capability-rollout.md).
+Combined producer and protocol identity: [native runtime qualification](journal/2026-10-07-native-runtime-qualification.md).
 
 - [ ] Add capability-negotiated, session-scoped MCP sources through the existing journaled proxy,
   including App and Mem bindings, revocation, credential isolation and uncertain-write handling.
@@ -65,8 +66,9 @@ Delivery order and acceptance: [native capability rollout](journal/2026-10-05-na
 - [ ] Qualify the assembled path with the installed runtime and configured provider: controlled
   tools, restart/resume, approval recovery, semantic outcomes and nested-subteam isolation.
   Standalone configured-provider history/approval/recovery pass with the local candidate.
-  Team semantic, controlled-tool, nested lifecycle and database/manager recovery fixtures are
-  prepared; external execution still requires payload/destination authorization. See
+  All six Team semantic, controlled-tool, nested lifecycle and database/manager recovery
+  entrypoints pass against the assembled local candidate and a deterministic localhost model;
+  external execution still requires payload/destination authorization. See
   [native Team provider acceptance](journal/2026-10-07-native-team-provider-acceptance.md).
   The installed `0.0.22` handshake lacks durable resume/recovery, MCP sources and approval
   persistence; a producer update is required before that binary can pass the assembled gate.

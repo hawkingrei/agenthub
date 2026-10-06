@@ -1,6 +1,6 @@
 {
-  "upstream_commit": "178dfecf6599ad536f53f5f207d37d547b510a6b",
-  "binary_sha256": "70c42d4622ded1c04103a0d7a2087dbe06083930d0e0646bb80c6f28f8a32dac",
+  "upstream_commit": "df7ed52b684aa175cb1f280ea306abaafedf73e2",
+  "binary_sha256": "dc82a0c5eca3dd464faa3a2c4ec36fae1cda629b91b2b51b9fd10adc1525c283",
   "frames": [
     {
       "type": "handshake",
