@@ -29,6 +29,7 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-10-07: Native Team provider acceptance](2026-10-07-native-team-provider-acceptance.md): opt-in semantic, controlled-tool and nested lifecycle checks with explicit provider qualification boundaries.
 - [2026-10-07: Retained activation transcripts](2026-10-07-retained-activation-transcripts.md): read-only navigation from terminal activations to their scoped conversation history after process exit.
 - [2026-10-07: Standalone native continuity](2026-10-07-native-standalone-continuity.md): independent guarded owners, exact conversation resume and cleanup-qualified reset across manager restarts.
 - [2026-10-07: Native resume acceptance](2026-10-07-native-resume-acceptance.md): full capability negotiation, actual-process continuity and waiting-for-input completion after explicit recovery review.

@@ -942,6 +942,9 @@ Phase 1 implementation validation:
 - opt-in configured-provider standalone checks for actual assistant recall after restart, approval
   callback replacement and uncertain-effect reconciliation; private explicit credentials and exact
   controlled-command approval, separately identified from installed-producer and Team qualification
+- opt-in configured-provider Team checks for task/Card semantic outcomes, controlled App/Mem
+  scope/revocation/uncertainty and a signed dispatch/report/acceptance cycle with native private
+  tasks; synthetic canonical inputs, exact allow-once command checks and isolated provider state
 - provider adapter unit tests for app-server handshake and capability negotiation
 - input mapping tests for submit, follow-up, pending answer, approval, cancel, and interrupt
 - request ack tests for accepted, queued, rejected, unknown-before-ack, and idempotent retry
@@ -1009,6 +1012,7 @@ Remaining local capability acceptance:
 
 ## Source Journals
 
+- [2026-10-07: Native Team provider acceptance](../journal/2026-10-07-native-team-provider-acceptance.md)
 - [2026-10-07: Standalone native continuity](../journal/2026-10-07-native-standalone-continuity.md)
 - [2026-10-07: Native resume acceptance](../journal/2026-10-07-native-resume-acceptance.md)
 
