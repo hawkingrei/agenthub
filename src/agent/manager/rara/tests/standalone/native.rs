@@ -7,6 +7,8 @@ use tokio::sync::Mutex;
 
 use super::*;
 
+mod configured;
+
 const WRAPPER: &str = r#"#!/usr/bin/env python3
 import json, os, pathlib, sys
 root = pathlib.Path(__file__).parent
@@ -105,9 +107,10 @@ impl NativeFixture {
     }
 
     async fn prompt(&self, local: &str, text: &str) {
+        let input_id = format!("fixture-input-{}", Uuid::new_v4());
         self.fixture
             .manager
-            .send_input(&self.fixture.agent_id, text, Some(text), Some(local))
+            .send_input(&self.fixture.agent_id, text, Some(&input_id), Some(local))
             .await
             .unwrap();
     }

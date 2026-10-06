@@ -45,7 +45,8 @@ spawn/cleanup competition, stale identity, mode arbitration, opening repair, res
 The actual native process selection passes three cases against the qualified local producer and a
 deterministic local model: clean manager/database restart with retained history, kill during pending
 approval with a new callback, and kill during an approved append with no replay after review.
-This is local candidate qualification, not configured-provider or upstream-release evidence.
+This deterministic selection qualifies the local candidate; it does not qualify a configured
+provider or an upstream release.
 
 The native manager selection passes 41 cases, including caller disconnect before spawn settles.
 Existing selections pass 18 native-loop, 13 guardian, 14 scope/configuration and 11 session cases;
@@ -96,10 +97,46 @@ PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_MINIMAL_RUNTIME=1 npm exec playwright -- te
 The Playwright process must inherit the same `STANDALONE_NATIVE_BROWSER_DIR`.
 Remote exact-head checks remain the publication gate recorded with the PR.
 
+The installed `0.0.22` binary was probed separately with an isolated dummy-provider configuration
+and no model request. Its SHA-256 is
+`2cf0d9a93620eb54e863a9b966b086c6c163e040c876d8a81d1357745abe8d90`.
+It supports the baseline protocol and clean shutdown but does not advertise `session.resume`,
+`session.query_recovery`, `session.resolve_recovery`, `session.evaluate_reentry`, or the three
+`mcp_source` methods; `approval_persistence` is false. Consequently, installed-version qualification
+requires a producer update. Candidate-process evidence must not be reported as evidence for this
+installed binary.
+
+The separate configured-provider selection passes all three standalone cases against
+`openai-compatible` / `deepseek-flash` using the qualified candidate binary:
+
+- A synthetic random code is recalled after database, manager and native process restart; the
+  second prompt does not contain the code. Assertions read persisted assistant output.
+- Killing a pending approval and restarting creates a new callback. The old callback cannot apply;
+  the restored one executes the exact approved append once.
+- Killing an approved append while its command is still running restores an uncertain decision.
+  Explicit review clears the block without repeating the append; a later tool-free prompt succeeds.
+
+These opt-in tests read only an explicitly supplied private provider configuration. They use isolated
+workspaces, restrict configuration copies to private permissions, disable extension/memory discovery,
+and never log credentials. Before approving a tool, the fixture verifies the exact command, workspace,
+environment and execution flags. All cases assert that the local mock model was unused. Runtime
+children and temporary credential copies are cleaned up after the checks. The input fixture uses an
+independent UUID request identity so natural-language prompts do not become protocol identifiers.
+
+```bash
+CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=target/loop-review-validation cargo test -p agenthub --lib standalone_configured_provider -- --ignored --test-threads=1
+```
+
+Set `AGENTHUB_RARA_TEST_BINARY` to the qualified candidate and `AGENTHUB_RARA_PROVIDER_CONFIG` to
+a private native provider JSON file. These checks make real model requests and remain excluded from
+ordinary CI. They qualify standalone candidate behavior only; Team/MCP/semantic/nested-subteam
+provider acceptance and installed-producer publication remain open.
+
 ## Follow-Ups
 
-- Complete installed/configured-provider qualification and upstream publication after the pending
-  destination authorization; do not substitute deterministic local model evidence for those gates.
+- Complete configured-provider Team/MCP/semantic/nested-subteam acceptance, installed-producer
+  qualification and upstream publication after the pending destination authorization. Standalone
+  candidate evidence does not replace those gates.
 - Track exact-head CI and retained activation-to-transcript navigation in [TODO](../todo.md).
 
 Contract: [direct runtime integration](../features/rara-direct-integration.md).

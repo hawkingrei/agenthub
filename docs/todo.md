@@ -44,7 +44,9 @@ Delivery order and acceptance: [native capability rollout](journal/2026-10-05-na
   approval recovery and uncertain-effect reconciliation preserve the conversation under fresh authority.
   Standalone Linux continuity now uses independent durable owners and explicit fresh/resume policy;
   actual-process restart, restored approvals and uncertain-effect reconciliation pass. Standalone browser
-  recovery and refresh also pass against the real backend; configured-provider qualification remains open. Evidence:
+  recovery and refresh also pass against the real backend. Configured-provider standalone restart,
+  approval and uncertain-effect checks pass with the local candidate; assembled Team qualification
+  remains open. Evidence:
   [native conversation binding](journal/2026-10-06-native-conversation-binding.md) and
   [native opening reconciliation](journal/2026-10-07-native-opening-reconciliation.md), plus
   [native resume acceptance](journal/2026-10-07-native-resume-acceptance.md) and
@@ -57,11 +59,14 @@ Delivery order and acceptance: [native capability rollout](journal/2026-10-05-na
   without automatic continuation or replay. Standalone restore now requires its new guarded owner,
   rejects old callbacks and leaves recovery idle for explicit input. The standalone browser confirms
   recovery without executing input and retains the later result after refresh. Configured-provider
-  qualification remains open. Evidence:
+  standalone cases also pass with the local candidate; assembled Team qualification remains open. Evidence:
   [native recovery entry](journal/2026-10-06-native-recovery-entry.md) and
   [native recovery controls](journal/2026-10-07-native-recovery-controls.md).
 - [ ] Qualify the assembled path with the installed runtime and configured provider: controlled
   tools, restart/resume, approval recovery, semantic outcomes and nested-subteam isolation.
+  Standalone configured-provider history/approval/recovery pass with the local candidate.
+  The installed `0.0.22` handshake lacks durable resume/recovery, MCP sources and approval
+  persistence; a producer update is required before that binary can pass the assembled gate.
 - [ ] Add explicit navigation from retained loop activation records to their stopped transcript.
   A cold process-diagnostics page selects only a live owner; completed conversation events remain
   available through the scoped event API, while member history exposes durable outcomes today.
