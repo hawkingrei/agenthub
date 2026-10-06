@@ -70,7 +70,10 @@ impl AgentManager {
             .map(|sources| sources.continuity_digest.clone())
             .ok_or_else(|| anyhow::anyhow!("native conversation configuration is missing"))?;
         let digest = configuration_digest(&source_digest, config, handshake)?;
-        let native = LoopStore::new(self.db.clone())
+        let store = LoopStore::new(self.db.clone());
+        self.reconcile_retired_native_opening(&store, &reservation, &digest)
+            .await?;
+        let native = store
             .begin_native_session(&reservation, &digest, Utc::now().timestamp())
             .await?;
         let request = match native {
@@ -81,6 +84,31 @@ impl AgentManager {
             None => ControlRequest::CreateSession,
         };
         Ok((request, Some(reservation)))
+    }
+
+    pub(in crate::agent::manager) async fn reconcile_retired_native_opening(
+        &self,
+        store: &LoopStore,
+        reservation: &LoopReservation,
+        digest: &str,
+    ) -> anyhow::Result<()> {
+        let Some(local) = store
+            .native_opening_to_reconcile(reservation, digest, Utc::now().timestamp())
+            .await?
+        else {
+            return Ok(());
+        };
+        // Route through the current actor's event database, never checkpoint discovery.
+        let pool = self.event_dbs.pool_for_agent(&reservation.actor_id).await?;
+        if let Some(owner) =
+            agenthub_db::runtime_events::RuntimeEventStore::load(pool, &local).await?
+            && let Some(evidence) = owner.accepted_closed_opening().await?
+        {
+            store
+                .reconcile_native_opening(reservation, &evidence, Utc::now().timestamp())
+                .await?;
+        }
+        Ok(())
     }
 }
 

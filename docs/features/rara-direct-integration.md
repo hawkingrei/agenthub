@@ -209,8 +209,15 @@ requested native identity; event sequences always start in the new runtime incar
 
 Resume with no previous binding creates the first conversation. Resume with a known binding
 requires matching configuration and a completed opening; missing, corrupt, incompatible or
-uncertain continuity fails without fresh fallback. An ambiguous opening remains retained for
-reconciliation. Explicit fresh policy can replace it only after verified cleanup. Conversation
+uncertain continuity fails without fresh fallback. The receipt-to-binding crash window can be
+reconciled from exactly one accepted create/resume receipt in the previous local launch's
+closed event owner. The receipt must own one matching stream; resume must name the stored
+conversation. The current guarded reservation and the old activation/generation's verified
+cleanup are checked again in the binding transaction. The repair records a
+`native_opening_reconciled` trace event and never contacts the old process or sends input.
+Missing, uncommitted, ambiguous or inconsistent opening evidence remains blocked. Checkpoint
+directory discovery cannot substitute for the exact local launch association.
+Explicit fresh policy can replace an unresolved opening only after verified cleanup. Conversation
 history grants no permission: each activation registers current sources and uses new credentials.
 Waiting inputs and interrupted execution must be preserved and reconciled before entry; they
 cannot be treated as idle or authorize replay of an earlier decision. Resume preflight remains
@@ -947,6 +954,7 @@ Remaining local capability acceptance:
 
 ## Source Journals
 
+- [2026-10-07: Native opening reconciliation](../journal/2026-10-07-native-opening-reconciliation.md)
 - [2026-10-07: Native recovery controls](../journal/2026-10-07-native-recovery-controls.md)
 - [2026-10-06: Native recovery entry](../journal/2026-10-06-native-recovery-entry.md)
 - [2026-10-06: Native conversation binding](../journal/2026-10-06-native-conversation-binding.md)

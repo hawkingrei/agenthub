@@ -2,6 +2,9 @@ use agenthub_agent_domain::loop_runtime::{LoopAdmission, LoopCleanupDisposition,
 
 use super::*;
 
+#[path = "native_opening_tests.rs"]
+mod opening;
+
 async fn starting(fixture: &Fixture, policy: LoopSessionPolicy, now: i64) -> LoopReservation {
     let key = format!("native-{now}");
     let receipt = fixture

@@ -2,6 +2,7 @@
 
 mod events;
 mod history;
+mod opening;
 mod requests;
 mod schema;
 #[cfg(test)]
@@ -14,6 +15,7 @@ pub use events::{
     RuntimePersistResult, RuntimeReplayGap,
 };
 pub use history::{RuntimeHistory, RuntimeStreamSummary};
+pub use opening::RuntimeOpeningEvidence;
 pub use requests::{
     RuntimeRejectionCode, RuntimeRequestAck, RuntimeRequestIntent, RuntimeRequestKind,
     RuntimeRequestReceipt, RuntimeRequestStatus, RuntimeSendPermit, RuntimeSubmissionFailure,
