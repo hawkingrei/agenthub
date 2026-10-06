@@ -74,6 +74,14 @@ loop cases and 35 manager transport/input cases pass. The dedicated shared permi
 publication regression fails against the previous implementation and passes with the
 delivery lock. The final full managed group also passes after that fix.
 
+Coverage CI exposed a fixture cancellation bug in that regression: timing out a
+pool query could drop the only in-memory SQLite connection and erase its schema.
+The observer now checks its deadline between completed queries. It retains the
+publication assertion and does not alter production synchronization.
+The full ACP library passes 63 cases after this fixture correction, and the
+publication regression passes 20 consecutive repetitions. ACP Clippy and formatting
+also pass; the refreshed coverage run remains the remote acceptance check.
+
 The actual pinned child passes transport/source/shutdown and managed user/plan/shell
 approval round trips (both allow and deny choices) against a local model fixture. These
 two opt-in cases were selected explicitly with `AGENTHUB_RARA_TEST_BINARY`; they do not
