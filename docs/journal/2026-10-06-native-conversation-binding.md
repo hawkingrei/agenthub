@@ -41,7 +41,8 @@ Focused validation commands:
 cargo test --locked -p agenthub-rara --lib
 cargo test --locked -p agenthub-db --lib
 cargo test --locked -p agenthub --lib continuity_digest
-cargo test --locked -p agenthub --lib loop_launch::tests::native::
+cargo test --locked -p agenthub --lib native_
+cargo test --locked -p agenthub --lib agent::manager::rara::tests::
 cargo clippy --locked -p agenthub --lib --tests -- -D warnings
 cargo fmt --all --check
 ```
@@ -51,6 +52,11 @@ generation, configuration mismatch, ambiguous opening, explicit fresh replacemen
 late ACK rejection, plus exact resume identity and zero-cursor event ownership. The managed loop
 fixture checks that consecutive fresh activations receive different native/local identities while
 retaining the same stable configuration digest and mailbox identity.
+
+The rebuilt CLI supports the managed fixtures: 22 native-path cases and 34 manager transport
+cases pass, along with the stable-digest regression. Existing opt-in process cases remain ignored
+by these filters. The fixtures require permission to bind local sockets; the initial restricted
+run failed during fixture setup, and the permitted run completed without test failures.
 
 ## Follow-Ups
 
