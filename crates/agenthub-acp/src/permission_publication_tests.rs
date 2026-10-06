@@ -48,21 +48,24 @@ async fn permission_is_not_reviewable_before_its_response_callback_can_be_regist
             .await
             .unwrap()
     });
-    let premature_publication = tokio::time::timeout(Duration::from_millis(500), async {
-        loop {
-            let count: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM acp_permission_requests WHERE status = 'pending'",
-            )
-            .fetch_one(&db)
-            .await
-            .unwrap();
-            if count > 0 {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(1)).await;
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(500);
+    // Cancelling pool acquisition can discard the sole in-memory connection and
+    // its schema. Bound observation between completed queries instead.
+    let premature_publication = loop {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM acp_permission_requests WHERE status = 'pending'",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        if count > 0 {
+            break true;
         }
-    })
-    .await;
+        if tokio::time::Instant::now() >= deadline {
+            break false;
+        }
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    };
     drop(callback_gate);
     let (id, response) = creation.await.unwrap();
     let outcome =
@@ -82,7 +85,7 @@ async fn permission_is_not_reviewable_before_its_response_callback_can_be_regist
         .unwrap();
     assert_eq!(status, "running");
     assert!(
-        premature_publication.is_err(),
+        !premature_publication,
         "a reviewer can answer before the live callback can receive the response"
     );
 }
