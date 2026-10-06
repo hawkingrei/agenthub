@@ -298,6 +298,7 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
         .execute(&mut *tx)
         .await?;
     }
+    crate::native_sessions::migrate_in_transaction(&mut tx).await?;
     tx.commit().await?;
     Ok(())
 }

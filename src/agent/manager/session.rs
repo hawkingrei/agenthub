@@ -175,6 +175,9 @@ impl AgentManager {
         agent_id: &str,
         provider: &str,
     ) -> anyhow::Result<()> {
+        if provider == "rara" {
+            return self.clear_standalone_native_conversation(agent_id).await;
+        }
         // This intentionally drops provider continuity only; it does not rewrite historical
         // `agent_sessions` launch records.
         sqlx::query(
@@ -294,6 +297,14 @@ impl AgentManager {
                     return Some(session_id);
                 }
                 let success = super::rara::exit_success(status.success(), direct.as_deref()).await;
+                if direct.is_some()
+                    && let Err(error) = self
+                        .cleanup_standalone_native_execution(agent_id, Some(&session_id))
+                        .await
+                {
+                    tracing::error!(agent_id, session_id, %error, "native session cleanup remains unverified");
+                    return Some(session_id);
+                }
                 Self::finalize_process_exit(
                     &self.db,
                     &self.event_dbs,
@@ -318,6 +329,14 @@ impl AgentManager {
                     .await
                 {
                     tracing::error!(agent_id, session_id, %error, "failed session cleanup remains unverified");
+                    return Some(session_id);
+                }
+                if direct.is_some()
+                    && let Err(error) = self
+                        .cleanup_standalone_native_execution(agent_id, Some(&session_id))
+                        .await
+                {
+                    tracing::error!(agent_id, session_id, %error, "native session cleanup remains unverified");
                     return Some(session_id);
                 }
                 Self::finalize_process_exit(
@@ -449,6 +468,7 @@ impl AgentManager {
     ) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
         let rara_config = self.rara_launch_configuration(&agent, actor_context.as_ref())?;
+        let is_native = rara_config.is_some();
         if rara_config.is_some() {
             let configured: bool =
                 sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM loop_policies WHERE actor_id = ?)")
@@ -544,6 +564,26 @@ impl AgentManager {
                     if let Err(error) = cleanup {
                         self.release_agent_start(agent_id).await;
                         return Err(error.context("failed start retained loop reservation because cleanup could not be verified"));
+                    }
+                }
+                if result.is_err() && is_native {
+                    let session_id = session_tracker.lock().await.clone();
+                    if let Some(session_id) = session_id {
+                        let cleanup = async {
+                            self.process_supervisor.stop_session(&session_id).await?;
+                            self.cleanup_standalone_native_execution(agent_id, Some(&session_id))
+                                .await?;
+                            let mut handles = self.inner.write().await;
+                            if Self::handle_matches_session(handles.get(agent_id), &session_id) {
+                                handles.remove(agent_id);
+                            }
+                            Ok::<(), anyhow::Error>(())
+                        }
+                        .await;
+                        if let Err(error) = cleanup {
+                            self.release_agent_start(agent_id).await;
+                            return Err(error.context("failed start retained native owner because cleanup could not be verified"));
+                        }
                     }
                 }
                 self.release_agent_start(agent_id).await;
@@ -750,6 +790,14 @@ impl AgentManager {
         }
 
         let is_rara = rara_config.is_some();
+        #[cfg(not(target_os = "linux"))]
+        anyhow::ensure!(
+            is_loop_activation
+                || rara_config.as_ref().is_none_or(|config| {
+                    config.standalone_session_policy == agenthub_config::RaraSessionPolicy::Fresh
+                }),
+            "standalone native resume requires a Linux executor guardian"
+        );
         let acp_provider = if is_rara {
             None
         } else {
@@ -821,6 +869,11 @@ impl AgentManager {
                 .authorize_guarded_spawn(reservation, Utc::now().timestamp())
                 .await?;
             Some(std::sync::Arc::new(witness))
+        } else if is_rara {
+            Some(
+                self.prepare_standalone_native_execution(&agent.id, &session_id)
+                    .await?,
+            )
         } else {
             None
         };
@@ -831,7 +884,7 @@ impl AgentManager {
             args: command_args,
             workdir: start_policy.workdir.clone(),
             actor_context: actor_context.clone(),
-            guard_descendants: loop_reservation.is_some(),
+            guard_descendants: loop_reservation.is_some() || (is_rara && cfg!(target_os = "linux")),
             #[cfg(target_os = "linux")]
             cleanup_witness,
             private_env: if is_loop_activation {
@@ -1003,6 +1056,7 @@ impl AgentManager {
                         child: child.clone(),
                         stdout,
                         stdin,
+                        workspace: std::path::PathBuf::from(&start_policy.workdir),
                     },
                     config,
                     output_tx.clone(),
@@ -1513,8 +1567,8 @@ impl AgentManager {
             })
         };
         if let Some((child, output_tx, session_id, rara)) = process {
-            if let Some(client) = rara {
-                self.shutdown_rara_transport(&client, &child).await;
+            if let Some(client) = &rara {
+                self.shutdown_rara_transport(client, &child).await;
             }
             self.process_supervisor
                 .stop_session_or_child(&session_id, &child)
@@ -1531,6 +1585,11 @@ impl AgentManager {
                 agenthub_agent_domain::loop_runtime::LoopCleanupDisposition::Exited,
             )
             .await?;
+
+            if rara.is_some() {
+                self.cleanup_standalone_native_execution(agent_id, Some(&session_id))
+                    .await?;
+            }
 
             let removed = {
                 let mut guard = self.inner.write().await;

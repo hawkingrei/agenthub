@@ -41,10 +41,10 @@ impl RaraHandle {
         target: Option<InputTarget>,
         origin: Option<Value>,
     ) -> anyhow::Result<()> {
-        let _operation = self.authorize_loop_input().await?;
+        let _operation = self.authorize_input_owner().await?;
         let _gate = self.input_gate.lock().await;
         self.await_admitted_events().await?;
-        self.verify_loop_input().await?;
+        self.verify_input_owner().await?;
         let refresh_recovery = {
             let state = self.state.read().await;
             state.input_attempted
@@ -56,7 +56,7 @@ impl RaraHandle {
         if refresh_recovery {
             // Terminal events do not necessarily include the durable recovery marker.
             self.query_recovery_state().await?;
-            self.verify_loop_input().await?;
+            self.verify_input_owner().await?;
         }
         let request = {
             let state = self.state.read().await;

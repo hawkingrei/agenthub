@@ -520,6 +520,18 @@ impl AgentManager {
         let _shutdown_guard = self.process_supervisor.begin_shutdown().await;
         self.shutdown_rara_transports().await;
         self.process_supervisor.stop_all().await?;
+        let native_sessions = {
+            let handles = self.inner.read().await;
+            handles
+                .iter()
+                .filter(|(_, handle)| matches!(handle.input, super::AgentInput::Rara(_)))
+                .map(|(actor, handle)| (actor.clone(), handle.session_id.clone()))
+                .collect::<Vec<_>>()
+        };
+        for (actor, session) in native_sessions {
+            self.cleanup_standalone_native_execution(&actor, Some(&session))
+                .await?;
+        }
         let loop_actors = self
             .loop_reservations
             .lock()

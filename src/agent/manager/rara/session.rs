@@ -46,6 +46,7 @@ pub struct RaraHandle {
     state: Arc<RwLock<LiveState>>,
     delivery: watch::Sender<Option<bool>>,
     loop_owner: Option<recovery::LoopOwner>,
+    standalone_owner: Option<super::standalone::StandaloneOwner>,
 }
 
 struct LiveState {
@@ -86,16 +87,25 @@ impl RaraHandle {
         agent_id: &str,
         output_tx: broadcast::Sender<AgentOutput>,
         config: &agenthub_config::RaraLaunchConfig,
+        workspace: &std::path::Path,
     ) -> anyhow::Result<Self> {
-        let (request, reservation) = manager
+        let opening = manager
             .begin_native_conversation(
                 agent_id,
                 store.local_session_id(),
                 config,
                 client.handshake(),
+                workspace,
             )
             .await?;
-        let ack = receipts::control(&manager.daemon_tasks, &client, &store, None, request).await?;
+        let ack = receipts::control(
+            &manager.daemon_tasks,
+            &client,
+            &store,
+            None,
+            opening.request,
+        )
+        .await?;
         let RuntimeRequestAck::Accepted {
             session_id,
             last_sequence,
@@ -108,16 +118,30 @@ impl RaraHandle {
             .stream(&session_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("direct runtime stream ownership is missing"))?;
-        if let Some(reservation) = &reservation {
+        if let Some(reservation) = &opening.loop_owner {
             agenthub_db::loop_runtime::LoopStore::new(manager.db.clone())
                 .bind_native_session(reservation, &session_id, chrono::Utc::now().timestamp())
                 .await?;
         }
+        if let Some(owner) = &opening.standalone_owner {
+            agenthub_db::native_sessions::NativeSessionStore::new(manager.db.clone())
+                .bind_conversation(owner, &session_id, chrono::Utc::now().timestamp())
+                .await?;
+        }
         let (delivery, _) = watch::channel(None);
         let (progress, _) = watch::channel(0);
-        let loop_owner = if let Some(reservation) = reservation {
+        let loop_owner = if let Some(reservation) = opening.loop_owner {
             Some(recovery::LoopOwner {
                 store: agenthub_db::loop_runtime::LoopStore::new(manager.db.clone()),
+                reservation,
+                operations: manager.loop_operation_gate(agent_id).await,
+            })
+        } else {
+            None
+        };
+        let standalone_owner = if let Some(reservation) = opening.standalone_owner {
+            Some(super::standalone::StandaloneOwner {
+                store: agenthub_db::native_sessions::NativeSessionStore::new(manager.db.clone()),
                 reservation,
                 operations: manager.loop_operation_gate(agent_id).await,
             })
@@ -156,6 +180,7 @@ impl RaraHandle {
             })),
             delivery,
             loop_owner,
+            standalone_owner,
         })
     }
 

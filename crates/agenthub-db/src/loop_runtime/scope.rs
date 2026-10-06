@@ -10,6 +10,10 @@ impl LoopStore {
         tx: &mut Transaction<'_, Sqlite>,
         actor_id: &str,
     ) -> anyhow::Result<Option<LoopPolicy>> {
+        anyhow::ensure!(
+            !crate::native_sessions::has_held_owner(tx, actor_id).await?,
+            LoopStoreError::ScopeBusy("native execution still requires verified cleanup")
+        );
         let row = sqlx::query("SELECT * FROM loop_policies WHERE actor_id = ?")
             .bind(actor_id)
             .fetch_optional(&mut **tx)

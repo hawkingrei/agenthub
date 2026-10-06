@@ -280,6 +280,9 @@ fn map_loop_configuration_error(error: anyhow::Error) -> ApiError {
     if error
         .downcast_ref::<agenthub_db::loop_runtime::LoopStoreError>()
         .is_some()
+        || error
+            .downcast_ref::<agenthub_db::native_sessions::NativeSessionError>()
+            .is_some()
     {
         ApiError::conflict(&error.to_string())
     } else {
@@ -947,6 +950,7 @@ async fn clear_acp_session(
     let provider = match payload.provider {
         Some(provider) => provider,
         None => match state.agents.get_agent(&agent_id).await {
+            Ok(agent) if agent.command == "rara" => "rara".to_string(),
             Ok(agent) => state
                 .agents
                 .acp_provider_for_agent(&agent.command, &agent.args)
@@ -968,7 +972,8 @@ async fn clear_acp_session(
     state
         .agents
         .clear_persistent_session(&agent_id, &provider)
-        .await?;
+        .await
+        .map_err(map_loop_configuration_error)?;
     Ok(ok_response())
 }
 

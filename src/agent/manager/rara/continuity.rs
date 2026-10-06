@@ -8,6 +8,12 @@ use sha2::{Digest, Sha256};
 
 use super::{AgentManager, NativeLoopContext, NativeLoopSources, RaraLaunchConfig};
 
+pub(super) struct NativeConversation {
+    pub request: ControlRequest,
+    pub loop_owner: Option<LoopReservation>,
+    pub standalone_owner: Option<agenthub_db::native_sessions::NativeExecutionOwner>,
+}
+
 impl NativeLoopSources {
     pub(in crate::agent::manager) fn new(
         launch: crate::acp::AcpLoopLaunchConfig,
@@ -52,10 +58,24 @@ impl AgentManager {
         local_session_id: &str,
         config: &RaraLaunchConfig,
         handshake: &Handshake,
-    ) -> anyhow::Result<(ControlRequest, Option<LoopReservation>)> {
+        workspace: &Path,
+    ) -> anyhow::Result<NativeConversation> {
         let reservation = self.loop_reservations.lock().await.get(agent_id).cloned();
         let Some(reservation) = reservation else {
-            return Ok((ControlRequest::CreateSession, None));
+            let (request, owner) = self
+                .begin_standalone_native_conversation(
+                    agent_id,
+                    local_session_id,
+                    config,
+                    handshake,
+                    workspace,
+                )
+                .await?;
+            return Ok(NativeConversation {
+                request,
+                loop_owner: None,
+                standalone_owner: owner,
+            });
         };
         anyhow::ensure!(
             reservation.session_id.as_deref() == Some(local_session_id),
@@ -83,7 +103,11 @@ impl AgentManager {
             }
             None => ControlRequest::CreateSession,
         };
-        Ok((request, Some(reservation)))
+        Ok(NativeConversation {
+            request,
+            loop_owner: Some(reservation),
+            standalone_owner: None,
+        })
     }
 
     pub(in crate::agent::manager) async fn reconcile_retired_native_opening(
@@ -112,7 +136,7 @@ impl AgentManager {
     }
 }
 
-fn configuration_digest(
+pub(super) fn configuration_digest(
     sources: &str,
     config: &RaraLaunchConfig,
     handshake: &Handshake,

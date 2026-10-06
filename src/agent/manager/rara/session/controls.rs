@@ -5,8 +5,17 @@ use super::*;
 impl RaraHandle {
     /// Capture the currently owned turn once; a late request must not stop its successor.
     pub(crate) async fn stop_turn(&self, interrupt: bool) -> anyhow::Result<()> {
+        // Loop cancellation remains available after execution authority is revoked.
+        let _operation = if self.standalone_owner.is_some() {
+            self.authorize_input_owner().await?
+        } else {
+            None
+        };
         let _gate = self.input_gate.lock().await;
         self.await_admitted_events().await?;
+        if let Some(owner) = &self.standalone_owner {
+            owner.store.verify_live(&owner.reservation).await?;
+        }
         let turn_id = match &self.state.read().await.phase {
             SessionPhase::Running { turn_id }
             | SessionPhase::Cancelling { turn_id }

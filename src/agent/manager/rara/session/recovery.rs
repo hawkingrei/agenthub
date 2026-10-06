@@ -39,27 +39,31 @@ pub(super) fn matches_target(target: &ReentryTarget, state: &LiveState) -> bool 
 }
 
 impl RaraHandle {
-    pub(super) async fn verify_loop_input(&self) -> anyhow::Result<()> {
+    pub(super) async fn verify_input_owner(&self) -> anyhow::Result<()> {
         if let Some(owner) = &self.loop_owner {
             owner
                 .store
                 .verify_executor_live(&owner.reservation, Utc::now().timestamp())
                 .await?;
         }
+        if let Some(owner) = &self.standalone_owner {
+            owner.store.verify_live(&owner.reservation).await?;
+        }
         Ok(())
     }
 
-    pub(super) async fn authorize_loop_input(
+    pub(super) async fn authorize_input_owner(
         &self,
     ) -> anyhow::Result<Option<OwnedRwLockReadGuard<()>>> {
-        let Some(owner) = &self.loop_owner else {
+        let operations = if let Some(owner) = &self.loop_owner {
+            &owner.operations
+        } else if let Some(owner) = &self.standalone_owner {
+            &owner.operations
+        } else {
             return Ok(None);
         };
-        let operation = owner.operations.clone().read_owned().await;
-        owner
-            .store
-            .verify_executor_live(&owner.reservation, Utc::now().timestamp())
-            .await?;
+        let operation = operations.clone().read_owned().await;
+        self.verify_input_owner().await?;
         Ok(Some(operation))
     }
 
@@ -79,10 +83,10 @@ impl RaraHandle {
 
     /// A restored wait is entered by a nonexecuting control, never an ordinary prompt.
     pub(crate) async fn enter_recovered_loop(&self, prompt: &str) -> anyhow::Result<bool> {
-        let _operation = self.authorize_loop_input().await?;
+        let _operation = self.authorize_input_owner().await?;
         let _gate = self.input_gate.lock().await;
         self.await_admitted_events().await?;
-        self.verify_loop_input().await?;
+        self.verify_input_owner().await?;
         let (request, request_id) = {
             let mut state = self.state.write().await;
             let target = match &state.phase {
@@ -129,7 +133,7 @@ impl RaraHandle {
         };
         let result = async {
             self.query_recovery_state().await?;
-            self.verify_loop_input().await?;
+            self.verify_input_owner().await?;
             let ack = receipts::control_with_id(
                 &self.tasks,
                 &self.client,
@@ -149,7 +153,7 @@ impl RaraHandle {
             };
             self.record_ack_cursor(&ack);
             self.await_admitted_events().await?;
-            self.verify_loop_input().await?;
+            self.verify_input_owner().await?;
             let mut state = self.state.write().await;
             anyhow::ensure!(
                 state
