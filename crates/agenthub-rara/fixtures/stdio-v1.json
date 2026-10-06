@@ -1,6 +1,6 @@
 {
-  "upstream_commit": "5585583a6674cb0d6ac36d5be98744dd75589871",
-  "binary_sha256": "dcf4639b05a51f274a210eb950e592c85564c554544370c3145e0e7708b7adc1",
+  "upstream_commit": "178dfecf6599ad536f53f5f207d37d547b510a6b",
+  "binary_sha256": "70c42d4622ded1c04103a0d7a2087dbe06083930d0e0646bb80c6f28f8a32dac",
   "frames": [
     {
       "type": "handshake",
@@ -39,7 +39,11 @@
           "mcp_source.unregister",
           "mcp_source.query",
           "output.replay",
-          "server.shutdown"
+          "server.shutdown",
+          "session.resume",
+          "session.query_recovery",
+          "session.evaluate_reentry",
+          "session.resolve_recovery"
         ],
         "event_families": [
           "semantic_guard",
@@ -62,7 +66,7 @@
         ],
         "capabilities": {
           "graceful_shutdown": true,
-          "approval_persistence": false,
+          "approval_persistence": true,
           "replay": {
             "lifetime": "runtime",
             "max_events_per_session": 256

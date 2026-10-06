@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 use super::*;
 
 mod input;
+mod recovery;
 mod semantic_guard;
 mod sources;
 mod transport;
@@ -15,6 +16,9 @@ hello = config['handshake']
 runtime = hello['runtime_id'] = str(uuid.uuid4())
 native = str(uuid.uuid4())
 sequence = 0
+waiting = None
+blocked = None
+resolution = None
 def emit(kind, payload):
     print(json.dumps({'type': kind, 'payload': payload}), flush=True)
 def event(family, kind, payload, turn=None):
@@ -30,6 +34,8 @@ def event(family, kind, payload, turn=None):
 def ack(request_id, turn=None):
     emit('ack', {'runtime_id':runtime, 'request_id':request_id, 'result':{
         'status':'accepted', 'session_id':native, 'turn_id':turn, 'last_sequence':sequence}})
+def recovery_state():
+    return {'waiting_turn_id':waiting, 'blocked':blocked, 'decisions':[], 'last_resolution':resolution}
 emit('handshake', hello)
 for line in sys.stdin:
     request = json.loads(line)
@@ -54,6 +60,18 @@ for line in sys.stdin:
                 time.sleep(0.01)
         ack(rid)
         event('session', 'created', {'session_id':native})
+        if config['mode'].startswith('reentry-'):
+            if 'recovery' in config['mode']:
+                blocked = {'recovery_id':'recovery-token', 'turn_id':'lost-turn', 'reason':'process_lost'}
+                pending = None
+                phase = {'state':'recovery_required','detail':{'recovery_id':'recovery-token'}}
+            else:
+                waiting = turn = 'restored-turn'
+                pending = {'turn_id':waiting,'kind':{'type':'shell','payload':{'approval_id':'restored-shell','request':{'command':'touch restored-effect'}}}}
+                event('input', 'requested', {'pending':pending}, waiting)
+                phase = {'state':'awaiting_input','detail':{'turn_id':waiting}}
+            event('session', 'runtime_state', {'snapshot':{'session_id':native, 'phase':phase,
+                'generation':0, 'last_sequence':sequence, 'pending_input':pending}})
         if config['mode'] == 'transport-loss':
             child = subprocess.Popen(['sleep', '60'], stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
@@ -73,6 +91,58 @@ for line in sys.stdin:
         assert operation == 'register'
         event('mcp', 'source_registered', {'source_id':body['source_id'], 'tool_names':[]})
         ack(rid)
+    elif operation == 'query_recovery':
+        before = sequence
+        event('session', 'recovery_state', {'state':recovery_state()})
+        if config['mode'] == 'reentry-query-prefix':
+            emit('ack', {'runtime_id':runtime,'request_id':rid,'result':{'status':'accepted','session_id':native,'turn_id':None,'last_sequence':before}})
+        else:
+            ack(rid)
+    elif operation == 'evaluate_reentry':
+        target = {'kind':'waiting','turn_id':waiting} if waiting else {'kind':'recovery','recovery_id':blocked['recovery_id']}
+        assert body['target'] == target
+        assert body['guard']['context']['role'] == 'worker'
+        result = {'type':'decided','payload':{'decision':{'outcome':'compatible'}}}
+        if 'mismatch' in config['mode']:
+            result['payload']['decision'] = {'outcome':'mismatch','reason':'Different responsibility'}
+        elif 'clarification' in config['mode']:
+            result['payload']['decision'] = {'outcome':'needs_clarification','reason':'Missing target','question':'Which target?'}
+        origin = {'runtime_id':runtime, 'request_id':rid}
+        if 'foreign' in config['mode']:
+            origin['request_id'] = 'foreign-entry'
+        before = sequence
+        evaluation = {'evaluation':{'origin':origin,'target':target,'result':result}}
+        event('session','reentry_evaluated',evaluation)
+        if config['mode'] == 'reentry-duplicate':
+            event('session','reentry_evaluated',evaluation)
+        if config['mode'] == 'reentry-phase-changed':
+            event('input','discarded',{'waiting_turn':waiting,'reason':'cancelled'},waiting)
+            waiting = None
+        (root / 'native-entry-evaluated').write_text(native)
+        if 'hold' in config['mode']:
+            deadline = time.monotonic() + 10
+            while not (root / 'native-entry-release').exists():
+                assert time.monotonic() < deadline
+                time.sleep(0.01)
+        if config['mode'] == 'reentry-result-prefix':
+            emit('ack', {'runtime_id':runtime,'request_id':rid,'result':{'status':'accepted','session_id':native,'turn_id':None,'last_sequence':before}})
+        else:
+            ack(rid)
+    elif operation == 'resolve_recovery':
+        assert blocked and body['recovery_id'] == blocked['recovery_id']
+        assert body['note']
+        blocked = None
+        resolution = body
+        event('session','recovery_state',{'state':recovery_state()})
+        ack(rid)
+    elif operation == 'answer_shell_approval':
+        assert request['payload']['expected_turn_id'] == waiting == 'restored-turn'
+        turn = str(uuid.uuid4())
+        event('input','answered',{'waiting_turn':waiting},turn)
+        waiting = None
+        event('session','turn_started',None,turn)
+        ack(rid,turn)
+        event('session','turn_finished',{'reason':'completed'},turn)
     elif operation in ['submit_user_prompt', 'submit_guarded_prompt']:
         turn = str(uuid.uuid4())
         event('session', 'turn_started', None, turn)
@@ -134,7 +204,7 @@ async fn fixture(mode: &str) -> Fixture {
     std::fs::write(&program, PROVIDER).unwrap();
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
     // The fake peer owns its capabilities; captured upstream wire data stays in the protocol crate.
-    let handshake = json!({
+    let mut handshake = json!({
         "protocol_version": agenthub_rara::PROTOCOL_VERSION,
         "runtime_version": "fixture",
         "runtime_id": "runtime-fixture",
@@ -157,6 +227,17 @@ async fn fixture(mode: &str) -> Fixture {
             "request_receipts": {"lifetime":"runtime", "max_requests":1024}
         }
     });
+    if mode.starts_with("reentry-") {
+        handshake["capabilities"]["approval_persistence"] = json!(true);
+        handshake["request_methods"]
+            .as_array_mut()
+            .unwrap()
+            .extend([
+                json!("session.query_recovery"),
+                json!("session.resolve_recovery"),
+                json!("session.evaluate_reentry"),
+            ]);
+    }
     serde_json::from_value::<agenthub_rara::Handshake>(handshake.clone())
         .unwrap()
         .validate()

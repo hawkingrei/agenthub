@@ -127,6 +127,10 @@ pub enum AgentSendInputError {
     NativeInputMismatch,
     #[error("answer the pending runtime question using its input card")]
     NativeInputRequired,
+    #[error("runtime entry checks are still pending")]
+    NativeEntryPending,
+    #[error("reconcile the interrupted operation before sending new input")]
+    NativeRecoveryRequired,
     #[error("runtime input {request_id} already has a receipt; it was not resubmitted")]
     NativeRequestReused { request_id: String },
     #[error(

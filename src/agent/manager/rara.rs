@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use agenthub_config::RaraLaunchConfig;
@@ -24,7 +25,7 @@ mod session;
 pub use session::RaraHandle;
 
 const PROCESS_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
-pub(super) const LOOP_SOURCE_VERSION: &str = "native-loop-v4";
+pub(super) const LOOP_SOURCE_VERSION: &str = "native-loop-v5";
 
 #[cfg(all(test, unix))]
 mod tests;
@@ -33,6 +34,14 @@ pub(super) struct RaraPipes {
     pub child: SharedSupervisedChild,
     pub stdout: ChildStdout,
     pub stdin: ChildStdin,
+}
+
+#[derive(serde::Serialize)]
+pub(crate) struct NativeRecoveryView {
+    pub local_session_id: String,
+    pub runtime_id: String,
+    pub session_id: String,
+    pub recovery: agenthub_rara::RecoveryStatus,
 }
 
 pub(super) async fn exit_success(success: bool, client: Option<&RaraHandle>) -> bool {
@@ -45,6 +54,46 @@ pub(super) async fn exit_success(success: bool, client: Option<&RaraHandle>) -> 
 }
 
 impl AgentManager {
+    async fn native_recovery_handle(
+        &self,
+        agent_id: &str,
+        local_session_id: &str,
+    ) -> anyhow::Result<Arc<RaraHandle>> {
+        let handles = self.inner.read().await;
+        let handle = handles
+            .get(agent_id)
+            .filter(|handle| handle.session_id == local_session_id)
+            .ok_or_else(|| anyhow::anyhow!("native recovery local owner changed"))?;
+        let AgentInput::Rara(runtime) = &handle.input else {
+            anyhow::bail!("session does not support native recovery");
+        };
+        Ok(runtime.clone())
+    }
+
+    pub(crate) async fn query_native_recovery(
+        &self,
+        agent_id: &str,
+        local_session_id: &str,
+    ) -> anyhow::Result<NativeRecoveryView> {
+        self.native_recovery_handle(agent_id, local_session_id)
+            .await?
+            .query_recovery()
+            .await
+    }
+
+    pub(crate) async fn reconcile_native_recovery(
+        &self,
+        agent_id: &str,
+        local_session_id: &str,
+        target: agenthub_rara::RecoveryTarget,
+        note: String,
+    ) -> anyhow::Result<()> {
+        self.native_recovery_handle(agent_id, local_session_id)
+            .await?
+            .reconcile_recovery(target, note)
+            .await
+    }
+
     pub(super) fn rara_launch_configuration(
         &self,
         agent: &AgentRecord,

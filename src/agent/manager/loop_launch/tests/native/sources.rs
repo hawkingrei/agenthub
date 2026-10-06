@@ -68,6 +68,10 @@ async fn native_loop_source_registration_preserves_authorized_proxy_descriptors(
         .await
         .unwrap()
         .unwrap();
+    store
+        .mark_running(&reservation, Utc::now().timestamp())
+        .await
+        .unwrap();
     let entry = manager
         .prepare_loop_entry(
             &fixture.state.teams,
@@ -76,7 +80,8 @@ async fn native_loop_source_registration_preserves_authorized_proxy_descriptors(
             "Execute assigned work".into(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .expect("fresh activation entry prompt");
     assert!(entry.contains("registered loop activation"));
     let requests: Vec<Value> =
         std::fs::read_to_string(fixture.directory.join("native-requests.jsonl"))

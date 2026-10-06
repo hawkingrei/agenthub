@@ -231,6 +231,10 @@ pub fn router(state: AppState) -> Router {
         .route("/{id}/start", post(start_agent))
         .route("/{id}/stop", post(stop_agent))
         .route(
+            "/{id}/runtime/recovery",
+            get(native_recovery::query).post(native_recovery::reconcile),
+        )
+        .route(
             "/{id}/input",
             post(send_input).layer(DefaultBodyLimit::max(AGENT_INPUT_BODY_LIMIT_BYTES)),
         )
@@ -557,6 +561,8 @@ async fn send_input(
                     AgentSendInputError::SessionMismatch { .. }
                     | AgentSendInputError::NativeInputMismatch
                     | AgentSendInputError::NativeInputRequired
+                    | AgentSendInputError::NativeEntryPending
+                    | AgentSendInputError::NativeRecoveryRequired
                     | AgentSendInputError::NativeRequestReused { .. }
                     | AgentSendInputError::NativeInputNotAccepted { .. } => {
                         Err(ApiError::conflict(&err.to_string()))
@@ -5540,3 +5546,4 @@ mod tests {
         assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST);
     }
 }
+mod native_recovery;

@@ -17,6 +17,9 @@ pub enum RuntimeRequestKind {
     PlanAnswer,
     ShellAnswer,
     Query,
+    QueryRecovery,
+    ResolveRecovery,
+    EvaluateReentry,
     Replay,
     PromptSource,
     SkillSource,
@@ -308,6 +311,9 @@ impl RuntimeEventStore {
                     | RuntimeRequestKind::SkillSource
                     | RuntimeRequestKind::McpSource
                     | RuntimeRequestKind::Query
+                    | RuntimeRequestKind::QueryRecovery
+                    | RuntimeRequestKind::ResolveRecovery
+                    | RuntimeRequestKind::EvaluateReentry
                     | RuntimeRequestKind::Replay => turn_id.is_none(),
                     RuntimeRequestKind::Cancel | RuntimeRequestKind::Interrupt => {
                         *turn_id == receipt.expected_turn_id
