@@ -1,4 +1,5 @@
 import type { NativeInputTarget } from "./native_input";
+import type { NativeRecoveryTarget, NativeRecoveryView } from "./native_recovery";
 import {
   clearAuthAndRedirect,
   shouldRedirectOnAuthError,
@@ -1577,6 +1578,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ input, message_id, session_id, images, native_input }),
     }),
+  getNativeRecovery: (token: string, id: string, localSessionId: string) =>
+    apiFetch<NativeRecoveryView>(
+      `/api/agents/${encodePathSegment(id)}/runtime/recovery?${new URLSearchParams({ local_session_id: localSessionId })}`,
+      token
+    ),
+  reconcileNativeRecovery: (
+    token: string, id: string, localSessionId: string, target: NativeRecoveryTarget, note: string
+  ) => apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/runtime/recovery`, token, {
+    method: "POST",
+    body: JSON.stringify({ local_session_id: localSessionId, target, note }),
+  }),
   createAgent: (token: string, payload: AgentConfig) =>
     apiFetch<AgentRecord>("/api/agents", token, {
       method: "POST",

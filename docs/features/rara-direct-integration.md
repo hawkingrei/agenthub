@@ -250,6 +250,17 @@ resolution return a conflict. The daemon owns admitted reconciliation through ca
 disconnects. An identical confirmed resolution is idempotent; it never sends a new
 prompt. The operator supplies any subsequent input explicitly.
 
+Standalone and Team member threads share a browser recovery panel for active native
+sessions with runtime-operation authority (root, admin or operator). `Review recovery`
+reads the current local owner explicitly; conversation
+history never supplies an actionable recovery token. The panel requires a nonempty
+bounded single-line note and preserves the queried runtime, native session and token
+in its confirmation request. Switching authentication, actor or local session resets
+the panel and ignores old responses. Failed confirmation discards the actionable state
+and requires another explicit query before retrying. Successful confirmation leaves
+the composer untouched and never sends input. Queries are user-triggered, not polled;
+ordinary questions and approvals remain in their existing conversation cards.
+
 Native loop input and approval admission hold the existing operation guard and verify
 the current activation, generation, local session, membership and lease after the
 input queue/event barrier. Cleanup cannot release that execution owner while an
@@ -936,6 +947,8 @@ Remaining local capability acceptance:
 
 ## Source Journals
 
+- [2026-10-07: Native recovery controls](../journal/2026-10-07-native-recovery-controls.md)
+- [2026-10-06: Native recovery entry](../journal/2026-10-06-native-recovery-entry.md)
 - [2026-10-06: Native conversation binding](../journal/2026-10-06-native-conversation-binding.md)
 - [2026-10-05: Native capability rollout](../journal/2026-10-05-native-capability-rollout.md)
 - [2026-09-18: Direct runtime loop activation](../journal/2026-09-18-native-loop-activation.md)

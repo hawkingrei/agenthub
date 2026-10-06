@@ -1,4 +1,5 @@
 import type { NativeInputTarget } from "../../native_input";
+import { canReviewNativeRecovery } from "../../native_recovery";
 import React, { Suspense, useMemo } from "react";
 import { Button } from "@mantine/core";
 import type { AuthState } from "../../types";
@@ -1037,6 +1038,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
       }
     >
       <LazyTeamMemberAcpPanel
+        recoveryToken={canReviewNativeRecovery(props.loop?.auth.role) ? props.loop?.auth.token : undefined}
         developerMode={developerMode}
         selectedMemberId={selectedAgentWorkspaceMemberId}
         memberTitle={selectedAgentLabel}
