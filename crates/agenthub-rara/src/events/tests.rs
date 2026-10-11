@@ -1,6 +1,47 @@
 use super::*;
 
 #[test]
+fn controlled_mcp_events_preserve_counts_and_reject_invalid_catalogues() {
+    let name = format!("mcp_{}", "a".repeat(60));
+    let metadata = super::telemetry::project(
+        "mcp",
+        "source_registered",
+        &json!({
+            "payload":{"source_id":"source", "tool_names":[&name], "command":"private"}
+        }),
+    )
+    .unwrap();
+    assert_eq!(
+        metadata,
+        json!({"family":"mcp", "event":"source_registered", "source_id":"source", "tool_count":1})
+    );
+    for names in [
+        json!([&name, &name]),
+        json!(["raw_tool_name"]),
+        json!([17]),
+        json!(vec![name; 513]),
+    ] {
+        assert!(
+            super::telemetry::project(
+                "mcp",
+                "source_registered",
+                &json!({"payload":{"source_id":"source", "tool_names":names}})
+            )
+            .is_err()
+        );
+    }
+    let source = json!({"source_id":"source", "tool_names":[]});
+    assert!(
+        super::telemetry::project(
+            "mcp",
+            "sources_listed",
+            &json!({"payload":{"sources":[&source, &source]}})
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn terminal_turns_retire_open_tools_and_allow_native_call_id_reuse() {
     for kind in [
         "turn_cancelled",
@@ -482,6 +523,16 @@ fn native_diagnostics_never_copy_raw_secrets_into_projected_history() {
             "mcp",
             "status_load_failed",
             json!({"message":"PRIVATE-MARKER"}),
+        ),
+        (
+            "mcp",
+            "source_registered",
+            json!({"source_id":"source","tool_names":[format!("mcp_{}", "a".repeat(60))],"env":{"TOKEN":"PRIVATE-MARKER"}}),
+        ),
+        (
+            "mcp",
+            "sources_listed",
+            json!({"sources":[{"source_id":"source","tool_names":[],"command":"PRIVATE-MARKER"}]}),
         ),
         (
             "warning",

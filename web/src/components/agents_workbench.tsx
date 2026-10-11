@@ -3,8 +3,11 @@ import { InputDock } from "./input_dock";
 import { OutputBody } from "./output_body";
 import { AgentsWorkbenchProps } from "./agents_workbench_types";
 import { useAgentsWorkbenchPanel } from "./use_agents_workbench_panel";
+import { NativeRecoveryPanel } from "./native_recovery_panel";
+import { hasNativeRuntime } from "../native_recovery";
 
 function AgentsWorkbenchView({
+  recoveryToken,
   activeAgent,
   activeAgentRecord,
   activeSessionId,
@@ -113,6 +116,8 @@ function AgentsWorkbenchView({
         ansi={ansi}
         acpPanelProps={acpPanelProps}
       />
+      <NativeRecoveryPanel token={recoveryToken} agentId={activeAgent} localSessionId={activeSessionId}
+        nativeRuntime={hasNativeRuntime(acpView)} canOperate={canControlAcp} />
       {showInputDock ? (
         <InputDock
           key={activeAgent ?? "standalone-acp"}

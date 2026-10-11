@@ -257,9 +257,21 @@ impl AgentManager {
             digest.update(super::rara::LOOP_SOURCE_VERSION);
             digest.update(serde_json::to_vec(&native_context)?);
         }
-        if let Some(fingerprint) = unavailable_fingerprint {
+        if let Some(fingerprint) = &unavailable_fingerprint {
             digest.update(fingerprint.as_bytes());
         }
+        let native_sources = native_context
+            .map(|context| {
+                super::rara::NativeLoopSources::new(
+                    launch.clone(),
+                    context,
+                    Path::new(workdir),
+                    &role_prompt,
+                    spec.get("required_capabilities"),
+                    unavailable_fingerprint.as_deref(),
+                )
+            })
+            .transpose()?;
         let snapshot = LoopLaunchSnapshot {
             version: 1,
             provider_id: provider.map_or("rara", |provider| provider.id).into(),
@@ -303,10 +315,7 @@ impl AgentManager {
                 run_id,
                 mem_bootstrap,
                 entry_prompt: role_prompt.entry,
-                native_sources: native_context.map(|context| super::rara::NativeLoopSources {
-                    launch: launch.clone(),
-                    context,
-                }),
+                native_sources,
             },
         );
         self.refresh_loop_credentials(&reservation).await?;
@@ -416,23 +425,25 @@ impl AgentManager {
             .await?;
         let entry = self.loop_entry_with_mem(&reservation).await?;
         let entry = self
-            .prepare_loop_entry(&reservation, &context, entry)
+            .prepare_loop_entry(&teams, &reservation, &context, entry)
             .await?;
         let submission = format!(
             "loop-entry:{}:{}",
             reservation.activation_id.as_deref().unwrap_or_default(),
             reservation.generation
         );
-        self.send_input_inner(
-            &reservation.actor_id,
-            &entry,
-            &[],
-            Some(&submission),
-            Some(&session_id),
-            None,
-            None,
-        )
-        .await?;
+        if let Some(entry) = entry {
+            self.send_input_inner(
+                &reservation.actor_id,
+                &entry,
+                &[],
+                Some(&submission),
+                Some(&session_id),
+                None,
+                None,
+            )
+            .await?;
+        }
         let cancellation = self.daemon_tasks.runtime_cancellation();
         loop {
             tokio::select! {
@@ -457,7 +468,21 @@ impl AgentManager {
                             && diagnostics.active_submission_ids.is_empty()
                             && diagnostics.active_prompt_count == 0)
                 }
-                AgentInput::Rara(runtime) => runtime.loop_turn_complete().await,
+                AgentInput::Rara(runtime) => {
+                    let completed = runtime.loop_turn_complete().await;
+                    if completed
+                        && let Some((decision, task_id)) = runtime.semantic_loop_outcome().await
+                    {
+                        teams
+                            .finish_native_semantic_guard(
+                                &reservation,
+                                &decision,
+                                task_id.as_deref(),
+                            )
+                            .await?;
+                    }
+                    completed
+                }
                 AgentInput::Stdin(_) => {
                     anyhow::bail!("loop provider does not expose turn lifecycle")
                 }

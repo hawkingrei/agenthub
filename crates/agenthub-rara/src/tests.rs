@@ -52,10 +52,21 @@ async fn pinned_real_process_frames_preserve_event_session_and_original_identity
 fn handshake_checks_methods_and_lifetimes_instead_of_version_label_alone() {
     let hello = hello();
     hello.validate().unwrap();
-    assert!(!hello.supports("session.resume"));
-    assert!(!hello.capabilities.approval_persistence);
+    assert!(hello.supports("session.resume"));
+    assert!(hello.capabilities.approval_persistence);
+    hello
+        .require_methods(&[
+            "session.query_recovery",
+            "session.resolve_recovery",
+            "session.evaluate_reentry",
+        ])
+        .unwrap();
+    let mut legacy = hello.clone();
+    legacy
+        .request_methods
+        .retain(|method| method != "session.resume");
     assert_eq!(
-        hello.require_methods(&["session.resume"]),
+        legacy.require_methods(&["session.resume"]),
         Err(ProtocolError::UnsupportedHandshake)
     );
     let mut missing = hello.clone();
@@ -71,6 +82,35 @@ fn handshake_checks_methods_and_lifetimes_instead_of_version_label_alone() {
     let mut changed = hello;
     changed.transport = "acp".into();
     assert_eq!(changed.validate(), Err(ProtocolError::UnsupportedHandshake));
+}
+
+#[test]
+fn durable_resume_requires_every_recovery_operation_and_persistent_interactions() {
+    hello().require_durable_resume().unwrap();
+    for method in [
+        "session.resume",
+        "session.query_recovery",
+        "session.resolve_recovery",
+        "session.evaluate_reentry",
+    ] {
+        let mut incomplete = hello();
+        incomplete.request_methods.retain(|entry| entry != method);
+        assert!(
+            incomplete.validate().is_ok(),
+            "fresh sessions remain supported"
+        );
+        assert_eq!(
+            incomplete.require_durable_resume(),
+            Err(ProtocolError::UnsupportedHandshake)
+        );
+    }
+    let mut volatile = hello();
+    volatile.capabilities.approval_persistence = false;
+    assert!(volatile.validate().is_ok());
+    assert_eq!(
+        volatile.require_durable_resume(),
+        Err(ProtocolError::UnsupportedHandshake)
+    );
 }
 
 #[test]

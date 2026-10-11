@@ -1,4 +1,5 @@
 import type { NativeInputTarget } from "./native_input";
+import type { NativeRecoveryTarget, NativeRecoveryView } from "./native_recovery";
 import {
   clearAuthAndRedirect,
   shouldRedirectOnAuthError,
@@ -1577,6 +1578,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ input, message_id, session_id, images, native_input }),
     }),
+  getNativeRecovery: (token: string, id: string, localSessionId: string) =>
+    apiFetch<NativeRecoveryView>(
+      `/api/agents/${encodePathSegment(id)}/runtime/recovery?${new URLSearchParams({ local_session_id: localSessionId })}`,
+      token
+    ),
+  reconcileNativeRecovery: (
+    token: string, id: string, localSessionId: string, target: NativeRecoveryTarget, note: string
+  ) => apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/runtime/recovery`, token, {
+    method: "POST",
+    body: JSON.stringify({ local_session_id: localSessionId, target, note }),
+  }),
   createAgent: (token: string, payload: AgentConfig) =>
     apiFetch<AgentRecord>("/api/agents", token, {
       method: "POST",
@@ -1587,14 +1599,16 @@ export const api = {
     id: string,
     limit = 500,
     sessionId?: string,
-    beforeId?: number | null
+    beforeId?: number | null,
+    signal?: AbortSignal
   ) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (sessionId) params.set("session_id", sessionId);
     if (beforeId != null) params.set("before_id", String(beforeId));
     return apiFetch<AgentEvent[]>(
       `/api/agents/${encodePathSegment(id)}/events?${params.toString()}`,
-      token
+      token,
+      { signal }
     );
   },
   getAgentEvent: (token: string, id: string, eventId: number) =>

@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use agenthub_config::RaraLaunchConfig;
@@ -12,6 +13,7 @@ use super::{AgentInput, AgentManager};
 use crate::acp::AcpActorSkillContext;
 use crate::agent::AgentRecord;
 
+mod continuity;
 mod events;
 mod history;
 mod loop_activation;
@@ -20,10 +22,11 @@ pub(super) use loop_activation::NativeLoopSources;
 pub(super) use loop_context::NativeLoopContext;
 mod receipts;
 mod session;
+mod standalone;
 pub use session::RaraHandle;
 
 const PROCESS_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
-pub(super) const LOOP_SOURCE_VERSION: &str = "native-loop-v2";
+pub(super) const LOOP_SOURCE_VERSION: &str = "native-loop-v5";
 
 #[cfg(all(test, unix))]
 mod tests;
@@ -32,6 +35,15 @@ pub(super) struct RaraPipes {
     pub child: SharedSupervisedChild,
     pub stdout: ChildStdout,
     pub stdin: ChildStdin,
+    pub workspace: std::path::PathBuf,
+}
+
+#[derive(serde::Serialize)]
+pub(crate) struct NativeRecoveryView {
+    pub local_session_id: String,
+    pub runtime_id: String,
+    pub session_id: String,
+    pub recovery: agenthub_rara::RecoveryStatus,
 }
 
 pub(super) async fn exit_success(success: bool, client: Option<&RaraHandle>) -> bool {
@@ -44,6 +56,46 @@ pub(super) async fn exit_success(success: bool, client: Option<&RaraHandle>) -> 
 }
 
 impl AgentManager {
+    async fn native_recovery_handle(
+        &self,
+        agent_id: &str,
+        local_session_id: &str,
+    ) -> anyhow::Result<Arc<RaraHandle>> {
+        let handles = self.inner.read().await;
+        let handle = handles
+            .get(agent_id)
+            .filter(|handle| handle.session_id == local_session_id)
+            .ok_or_else(|| anyhow::anyhow!("native recovery local owner changed"))?;
+        let AgentInput::Rara(runtime) = &handle.input else {
+            anyhow::bail!("session does not support native recovery");
+        };
+        Ok(runtime.clone())
+    }
+
+    pub(crate) async fn query_native_recovery(
+        &self,
+        agent_id: &str,
+        local_session_id: &str,
+    ) -> anyhow::Result<NativeRecoveryView> {
+        self.native_recovery_handle(agent_id, local_session_id)
+            .await?
+            .query_recovery()
+            .await
+    }
+
+    pub(crate) async fn reconcile_native_recovery(
+        &self,
+        agent_id: &str,
+        local_session_id: &str,
+        target: agenthub_rara::RecoveryTarget,
+        note: String,
+    ) -> anyhow::Result<()> {
+        self.native_recovery_handle(agent_id, local_session_id)
+            .await?
+            .reconcile_recovery(target, note)
+            .await
+    }
+
     pub(super) fn rara_launch_configuration(
         &self,
         agent: &AgentRecord,
@@ -133,9 +185,31 @@ impl AgentManager {
         )
         .await?;
         if self.has_loop_activation(agent_id).await {
+            agenthub_rara::GuardedPrompt::require_capability(client.handshake())?;
             client
                 .handshake()
                 .require_methods(&["prompt_source.register", "skill_source.register"])?;
+            let (has_mcp_sources, resume) = self
+                .loop_credentials
+                .lock()
+                .await
+                .get(agent_id)
+                .and_then(|credentials| credentials.native_sources.as_ref())
+                .map(|sources| {
+                    (
+                        !sources.launch.mcp_servers().is_empty(),
+                        sources.launch.require_resume,
+                    )
+                })
+                .unwrap_or_default();
+            if resume {
+                client.handshake().require_durable_resume()?;
+            }
+            if has_mcp_sources {
+                agenthub_rara::McpSource::require_capability(client.handshake())?;
+            }
+        } else if config.standalone_session_policy == agenthub_config::RaraSessionPolicy::Resume {
+            client.handshake().require_durable_resume()?;
         }
         let store = agenthub_db::runtime_events::RuntimeEventStore::bind(
             self.event_dbs.pool_for_agent(agent_id).await?,
@@ -143,9 +217,16 @@ impl AgentManager {
             &client.handshake().runtime_id,
         )
         .await?;
-        let startup =
-            session::RaraHandle::create(self, client.clone(), store.clone(), agent_id, output_tx)
-                .await;
+        let startup = session::RaraHandle::open(
+            self,
+            client.clone(),
+            store.clone(),
+            agent_id,
+            output_tx,
+            config,
+            &pipes.workspace,
+        )
+        .await;
         let handle = match startup {
             Ok(handle) => std::sync::Arc::new(handle),
             Err(error) => {
@@ -188,6 +269,9 @@ impl AgentManager {
                         .cleanup_observed_session(&agent_id, &session_id, &pipes.child)
                         .await
                         .context("failed to clean direct runtime after transport loss")?;
+                    manager
+                        .cleanup_standalone_native_execution(&agent_id, Some(&session_id))
+                        .await?;
                     let current = {
                         let handles = manager.inner.read().await;
                         Self::handle_matches_session(handles.get(&agent_id), &session_id)

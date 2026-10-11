@@ -8,6 +8,7 @@ use serde_json::Value;
 pub(super) enum NativeEvent {
     Session(SessionEvent),
     Input(InputEvent),
+    SemanticGuard(crate::SemanticGuardEvent),
     Assistant(AssistantEvent),
     Tool(ToolEvent),
     Approval(ApprovalEvent),
@@ -29,6 +30,12 @@ pub(super) enum NativeEvent {
 pub(super) enum SessionEvent {
     RuntimeState {
         snapshot: SessionSnapshot,
+    },
+    RecoveryState {
+        state: crate::RecoveryStatus,
+    },
+    ReentryEvaluated {
+        evaluation: crate::ReentryEvaluation,
     },
     Created {
         session_id: String,
@@ -81,6 +88,7 @@ pub struct SessionSnapshot {
 pub enum SessionPhase {
     Idle,
     AwaitingInput { turn_id: String },
+    RecoveryRequired { recovery_id: String },
     Running { turn_id: String },
     Cancelling { turn_id: String },
     Closing,

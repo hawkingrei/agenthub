@@ -103,7 +103,7 @@ async fn native_loop_question_api_accepts_only_current_fenced_answers() {
     assert!(invalid.iter().all(|status| *status == StatusCode::CONFLICT));
     assert_eq!(stale, Some(StatusCode::CONFLICT));
     assert_eq!(log.matches("answer_pending_input").count(), 1);
-    assert_eq!(log.matches("submit_user_prompt").count(), 1);
+    assert_eq!(log.matches("submit_guarded_prompt").count(), 1);
     assert_eq!(activation.state, LoopActivationState::Interrupted);
     assert!(activation.outcome.is_none());
 }

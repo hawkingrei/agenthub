@@ -21,6 +21,7 @@ mod daemon_generation;
 pub mod loop_runtime;
 pub mod mcp_operations;
 pub mod message_body_outbox;
+pub mod native_sessions;
 pub mod object_uploads;
 pub mod runtime_events;
 mod time_triggers;

@@ -9,8 +9,8 @@ import type {
 } from "../../src/loop_types";
 import { jsonResponse, mockTeamPageApis } from "./team_page_fixture";
 
-export async function mockLoopWorkspace(page: Page) {
-  const fixture = await mockTeamPageApis(page);
+export async function mockLoopWorkspace(page: Page, role = "root") {
+  const fixture = await mockTeamPageApis(page, role);
   const teamId = "team-loop-browser";
   const actorId = "agent-worker-1";
   fixture.agents.forEach((agent) => {

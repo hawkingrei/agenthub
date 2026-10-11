@@ -398,12 +398,44 @@ impl Fixture {
         reservation
     }
 
+    async fn session_policy(&self, session_policy: LoopSessionPolicy) {
+        let store = LoopStore::new(self.state.db.clone());
+        let policy = store
+            .policy(&self.team_id, "worker")
+            .await
+            .unwrap()
+            .unwrap();
+        store
+            .configure(
+                LoopPolicyUpdate {
+                    actor_id: "worker",
+                    team_id: &self.team_id,
+                    expected_revision: policy.revision,
+                    state: LoopPolicyState::Enabled,
+                    session_policy,
+                    limits: &policy.limits,
+                },
+                Utc::now().timestamp(),
+            )
+            .await
+            .unwrap();
+    }
+
     async fn execute(&self, key: &str) -> agenthub_agent_domain::loop_runtime::LoopActivation {
+        self.execute_with_timeout(key, Duration::from_secs(15))
+            .await
+    }
+
+    async fn execute_with_timeout(
+        &self,
+        key: &str,
+        timeout: Duration,
+    ) -> agenthub_agent_domain::loop_runtime::LoopActivation {
         let reservation = self.admit(key).await;
         let activation_id = reservation.activation_id.clone().unwrap();
         let store = LoopStore::new(self.state.db.clone());
         tokio::time::timeout(
-            Duration::from_secs(15),
+            timeout,
             self.state
                 .agents
                 .execute_loop_activation(self.state.teams.clone(), reservation),

@@ -1,4 +1,5 @@
 import type { NativeInputTarget } from "./native_input";
+import { canReviewNativeRecovery } from "./native_recovery";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
@@ -888,6 +889,7 @@ export function App() {
   const workbenchProps = useMemo(
     () =>
       buildAgentsWorkbenchProps({
+        recoveryToken: canReviewNativeRecovery(auth?.role) ? auth?.token : undefined,
         activeAgent,
         activeAgentRecord,
         activeSessionId,
@@ -934,6 +936,8 @@ export function App() {
         showTerminalJump: terminalShowJump,
       }),
     [
+      auth?.role,
+      auth?.token,
       activeAgent,
       activeAgentRecord,
       activeSessionId,

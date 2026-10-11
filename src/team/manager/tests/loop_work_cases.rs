@@ -9,7 +9,9 @@ pub(super) async fn fixture() -> (TeamManager, crate::team::TeamDefinitionRecord
     fixture_with_db(setup_test_db().await).await
 }
 
-async fn fixture_with_db(db: SqlitePool) -> (TeamManager, crate::team::TeamDefinitionRecord) {
+pub(super) async fn fixture_with_db(
+    db: SqlitePool,
+) -> (TeamManager, crate::team::TeamDefinitionRecord) {
     for actor in ["planner", "reviewer", "observer"] {
         sqlx::query("INSERT INTO agents(id,name,workdir,command,args,worktree_mode,status,created_at,updated_at) VALUES (?, ?, '/tmp', 'fake', '[]', 'use_existing', 'idle', 1, 1)")
             .bind(actor).bind(actor).execute(&db).await.unwrap();

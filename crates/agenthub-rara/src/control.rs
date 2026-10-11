@@ -15,8 +15,13 @@ pub struct InputTarget {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ControlKind {
     CreateSession,
+    ResumeSession,
     Query,
+    QueryRecovery,
+    ResolveRecovery,
+    EvaluateReentry,
     Prompt,
+    GuardedPrompt,
     FollowUp,
     Cancel,
     Interrupt,
@@ -25,6 +30,7 @@ pub enum ControlKind {
     ShellAnswer,
     PromptSource,
     SkillSource,
+    McpSource,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -50,8 +56,15 @@ pub enum ShellDecision {
 #[derive(Clone)]
 pub enum ControlRequest {
     RegisterSource(crate::SourceRegistration),
+    GuardedPrompt(crate::GuardedPrompt),
     CreateSession,
+    ResumeSession {
+        session_id: String,
+    },
     Query,
+    QueryRecovery,
+    ResolveRecovery(crate::RecoveryResolution),
+    EvaluateReentry(crate::ReentryGuard),
     Prompt {
         prompt: String,
     },
@@ -84,8 +97,13 @@ impl ControlRequest {
         match self {
             Self::RegisterSource(source) => source.kind(),
             Self::CreateSession => ControlKind::CreateSession,
+            Self::ResumeSession { .. } => ControlKind::ResumeSession,
             Self::Query => ControlKind::Query,
+            Self::QueryRecovery => ControlKind::QueryRecovery,
+            Self::ResolveRecovery(_) => ControlKind::ResolveRecovery,
+            Self::EvaluateReentry(_) => ControlKind::EvaluateReentry,
             Self::Prompt { .. } => ControlKind::Prompt,
+            Self::GuardedPrompt(_) => ControlKind::GuardedPrompt,
             Self::FollowUp { .. } => ControlKind::FollowUp,
             Self::Cancel { .. } => ControlKind::Cancel,
             Self::Interrupt { .. } => ControlKind::Interrupt,
@@ -117,8 +135,44 @@ impl ControlRequest {
                 let (family, method, body) = source.operation()?;
                 (family, method, Some(body))
             }
+            Self::GuardedPrompt(request) => {
+                request.validate()?;
+                (
+                    "input",
+                    "submit_guarded_prompt",
+                    Some(serde_json::to_value(request).map_err(|_| ProtocolError::Serialization)?),
+                )
+            }
             Self::CreateSession => ("session", "create_session", None),
+            Self::ResumeSession { session_id } => {
+                crate::protocol::validate_id(session_id)?;
+                (
+                    "session",
+                    "resume_session",
+                    Some(json!({"session_id": session_id})),
+                )
+            }
             Self::Query => ("session", "query_runtime_state", None),
+            Self::QueryRecovery => ("session", "query_recovery", None),
+            Self::ResolveRecovery(resolution) => {
+                resolution.validate()?;
+                (
+                    "session",
+                    "resolve_recovery",
+                    Some(
+                        serde_json::to_value(resolution)
+                            .map_err(|_| ProtocolError::Serialization)?,
+                    ),
+                )
+            }
+            Self::EvaluateReentry(request) => {
+                request.validate()?;
+                (
+                    "session",
+                    "evaluate_reentry",
+                    Some(serde_json::to_value(request).map_err(|_| ProtocolError::Serialization)?),
+                )
+            }
             Self::Cancel { .. } => ("session", "cancel_current_turn", None),
             Self::Interrupt { .. } => ("session", "interrupt_current_turn", None),
             Self::Prompt { prompt } | Self::FollowUp { prompt } => {
@@ -193,6 +247,39 @@ fn text(text: &str, required: bool) -> Result<(), ProtocolError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resume_targets_durable_identity_without_live_session_provenance() {
+        let request = ControlRequest::ResumeSession {
+            session_id: "conversation".into(),
+        };
+        let frame = request.frame("new-runtime", "resume", None).unwrap();
+        let value = serde_json::to_value(frame).unwrap();
+        assert_eq!(
+            value["payload"]["envelope"]["request"]["payload"]["type"],
+            "resume_session"
+        );
+        assert_eq!(
+            value["payload"]["envelope"]["request"]["payload"]["payload"]["session_id"],
+            "conversation"
+        );
+        assert!(value["payload"]["envelope"]["provenance"]["session_id"].is_null());
+        assert_eq!(request.kind(), ControlKind::ResumeSession);
+        assert!(
+            request
+                .frame("new-runtime", "resume", Some("conversation"))
+                .is_err()
+        );
+        for session_id in ["", "../ private", "native\n"] {
+            assert!(
+                ControlRequest::ResumeSession {
+                    session_id: session_id.into()
+                }
+                .frame("runtime", "resume", None)
+                .is_err()
+            );
+        }
+    }
 
     #[test]
     fn native_controls_preserve_targets_and_exact_wire_methods() {

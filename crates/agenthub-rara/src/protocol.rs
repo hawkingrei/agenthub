@@ -121,9 +121,17 @@ impl ClientFrame {
                     .and_then(|p| p.get("type"))
                     .and_then(Value::as_str)
                     .ok_or(ProtocolError::MalformedFrame)?;
-                let create = family == "session" && method == "create_session";
-                if create == envelope.provenance.session_id.is_some() {
+                let opening =
+                    family == "session" && matches!(method, "create_session" | "resume_session");
+                if opening == envelope.provenance.session_id.is_some() {
                     return Err(ProtocolError::InvalidTarget);
+                }
+                if family == "session" && method == "resume_session" {
+                    validate_id(
+                        envelope.request["payload"]["payload"]["session_id"]
+                            .as_str()
+                            .ok_or(ProtocolError::InvalidTarget)?,
+                    )?;
                 }
                 let requires_turn = matches!(
                     (family, method),

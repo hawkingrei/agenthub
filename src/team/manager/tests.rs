@@ -10,6 +10,7 @@ mod channel_cases;
 mod conversation_cases;
 mod linked_run_cases;
 mod loop_scheduling_cases;
+mod loop_semantic_outcomes_cases;
 mod loop_work_cases;
 mod mailbox_basic_cases;
 mod mailbox_channel_cases;
