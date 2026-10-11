@@ -29,6 +29,7 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-10-11: Native main integration](2026-10-11-native-main-integration.md): combine the native consumer stack directly against main, retain its Vite update and distinguish dependency merges from completed rollout.
 - [2026-10-07: Native runtime qualification](2026-10-07-native-runtime-qualification.md): assembled producer identity, recaptured protocol and local combined-candidate acceptance with explicit publication and installed-provider gates.
 - [2026-10-07: Native Team provider acceptance](2026-10-07-native-team-provider-acceptance.md): opt-in semantic, controlled-tool and nested lifecycle checks with explicit provider qualification boundaries.
 - [2026-10-07: Retained activation transcripts](2026-10-07-retained-activation-transcripts.md): read-only navigation from terminal activations to their scoped conversation history after process exit.

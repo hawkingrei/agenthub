@@ -28,6 +28,10 @@ integration baseline. Contract: [direct runtime integration](features/rara-direc
 Delivery order and acceptance: [native capability rollout](journal/2026-10-05-native-capability-rollout.md).
 Combined producer and protocol identity: [native runtime qualification](journal/2026-10-07-native-runtime-qualification.md).
 
+- [ ] Integrate the complete native consumer stack into main. PR #1201 merged into the #1200
+  dependency branch; the main-targeted integration preserves current main's dependency updates
+  and requires its own CI plus the remaining producer/provider gates. Evidence:
+  [native main integration](journal/2026-10-11-native-main-integration.md).
 - [ ] Add capability-negotiated, session-scoped MCP sources through the existing journaled proxy,
   including App and Mem bindings, revocation, credential isolation and uncertain-write handling.
   Implementation and deterministic actual-process qualification are complete; upstream publication
