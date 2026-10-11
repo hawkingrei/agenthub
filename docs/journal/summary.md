@@ -29,11 +29,24 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-10-07: Native runtime qualification](2026-10-07-native-runtime-qualification.md): assembled producer identity, recaptured protocol and local combined-candidate acceptance with explicit publication and installed-provider gates.
+- [2026-10-07: Native Team provider acceptance](2026-10-07-native-team-provider-acceptance.md): opt-in semantic, controlled-tool and nested lifecycle checks with explicit provider qualification boundaries.
+- [2026-10-07: Retained activation transcripts](2026-10-07-retained-activation-transcripts.md): read-only navigation from terminal activations to their scoped conversation history after process exit.
+- [2026-10-07: Standalone native continuity](2026-10-07-native-standalone-continuity.md): independent guarded owners, exact conversation resume and cleanup-qualified reset across manager restarts.
+- [2026-10-07: Native resume acceptance](2026-10-07-native-resume-acceptance.md): full capability negotiation, actual-process continuity and waiting-for-input completion after explicit recovery review.
+- [2026-10-07: Native recovery controls](2026-10-07-native-recovery-controls.md): shared browser review, current target binding and stale-response isolation without input replay.
+- [2026-10-07: Native opening reconciliation](2026-10-07-native-opening-reconciliation.md): repair committed opening receipts after exact old-owner retirement without replaying creation or input.
+- [2026-10-06: Native recovery entry](2026-10-06-native-recovery-entry.md): restored callback admission, current executor checks and explicit nonreplaying recovery reconciliation.
+- [2026-10-06: Native semantic outcomes](2026-10-06-native-semantic-outcomes.md): guarded activation delivery, strict event/ACK correlation and atomic clarification reply waits.
+- [2026-10-06: Native conversation binding](2026-10-06-native-conversation-binding.md): durable opening intent, stable scoped configuration and exact cleanup/receipt fencing before conversation reuse.
+
+- [2026-10-05: Native capability rollout](2026-10-05-native-capability-rollout.md): reopen controlled tool sources, semantic outcomes, cross-process continuity, durable approval recovery and assembled acceptance after the existing integration merged.
+
 - [2026-10-03: Mailbox ACK writer contention](2026-10-03-mailbox-ack-writer-contention.md): acquire write ownership before the ACK read snapshot and retain idempotency under concurrent WAL writers.
 
 - [2026-09-27: Revoked execution sources](2026-09-27-loop-revoked-execution-sources.md): exclude revoked sources from live execution pages and exact-source reads while preserving history and stable pagination.
 
-- [2026-09-21: ACP rollout integration](2026-09-21-acp-rollout-integration.md): PR #1169 merged the ACP slices, verified restart recovery, installed-adapter acceptance and operator guidance after applicable CI passed. Native support remains deferred.
+- [2026-09-21: ACP rollout integration](2026-09-21-acp-rollout-integration.md): PR #1169 merged the ACP slices, verified restart recovery, installed-adapter acceptance and operator guidance after applicable CI passed. The native scope deferred at that checkpoint was reopened on 2026-10-05.
 
 - [2026-09-18: Direct runtime loop activation](2026-09-18-native-loop-activation.md): typed source controls, pinned task context, retained traces and fresh leader/worker activation evidence; tool sources, semantic outcomes and approval persistence remain open.
 - [2026-09-18: Direct runtime event storage](2026-09-18-runtime-event-storage.md): atomic history/deduplication/cursors, control receipts, typed projection, managed replay and fenced live input/permissions.

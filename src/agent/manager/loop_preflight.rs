@@ -139,17 +139,14 @@ impl AgentManager {
         }
         if native {
             if session_policy == LoopSessionPolicy::Resume {
-                blockers.push("native_resume_unsupported");
+                warnings.push("native_resume_capabilities_negotiated_before_entry");
             }
             warnings.push("native_sources_negotiated_before_entry");
-            warnings.push("native_permissions_require_live_runtime");
+            warnings.push("native_permissions_require_current_owner");
         } else if session_policy == LoopSessionPolicy::Resume {
             warnings.push("resume_capability_is_negotiated_before_entry");
         }
         if crate::mcp_proxy::configured::has_mem_binding(&self.loop_app_config, team_id) {
-            if native {
-                blockers.push("native_mcp_sources_unsupported");
-            }
             if crate::mcp_proxy::configured::validate_mem_configuration(
                 &self.loop_app_config,
                 team_id,
@@ -186,9 +183,6 @@ impl AgentManager {
             }
             Ok(true) => {
                 capabilities.push("app_tools");
-                if native {
-                    blockers.push("native_mcp_sources_unsupported");
-                }
             }
             Ok(false) => {}
             Err(_) => blockers.push("app_binding_unavailable"),

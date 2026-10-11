@@ -38,6 +38,9 @@ pub(super) async fn deferral_reason(
             LoopDeferralReason::Reserved
         }));
     }
+    if crate::native_sessions::has_held_owner(tx, &activation.actor_id).await? {
+        return Ok(Some(LoopDeferralReason::Reserved));
+    }
     if activation.attempt_count >= i64::from(policy.limits.startup_attempts) {
         return Ok(Some(LoopDeferralReason::StartupLimit));
     }

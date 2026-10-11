@@ -58,13 +58,25 @@ impl LoopStore {
         outcome: &LoopOutcome,
         now: i64,
     ) -> anyhow::Result<LoopFinishReceipt> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let receipt = Self::finish_in_transaction(&mut tx, reservation, outcome, now).await?;
+        tx.commit().await?;
+        Ok(receipt)
+    }
+
+    /// Compose canonical side effects with the same fenced outcome write. The caller owns commit.
+    pub async fn finish_in_transaction(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        reservation: &LoopReservation,
+        outcome: &LoopOutcome,
+        now: i64,
+    ) -> anyhow::Result<LoopFinishReceipt> {
         outcome.validate()?;
         anyhow::ensure!(now >= 0, "invalid finish time");
         let activation_id = reservation
             .activation_id
             .as_deref()
             .ok_or(LoopStoreError::InvalidState)?;
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let row = sqlx::query(
             "SELECT a.*, f.owner_id AS finish_owner, f.receipt_json FROM loop_activations a \
              LEFT JOIN loop_finish_receipts f ON f.activation_id = a.id \
@@ -74,7 +86,7 @@ impl LoopStore {
         .bind(&reservation.actor_id)
         .bind(&reservation.team_id)
         .bind(reservation.generation)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await?
         .ok_or(LoopStoreError::StaleLease)?;
         if let Some(recorded) = row.try_get::<Option<&str>, _>("outcome_json")? {
@@ -87,11 +99,10 @@ impl LoopStore {
                 LoopStoreError::IdempotencyConflict
             );
             let receipt = serde_json::from_str(row.try_get("receipt_json")?)?;
-            tx.commit().await?;
             return Ok(receipt);
         }
-        let current = require_live_reservation(&mut tx, reservation, now).await?;
-        require_member(&mut tx, &current.team_id, &current.actor_id).await?;
+        let current = require_live_reservation(tx, reservation, now).await?;
+        require_member(tx, &current.team_id, &current.actor_id).await?;
         anyhow::ensure!(
             row.try_get::<&str, _>("state")? == "running",
             LoopStoreError::InvalidState
@@ -109,19 +120,19 @@ impl LoopStore {
             .bind(&current.actor_id)
             .bind(current.created_at)
             .bind(now)
-            .fetch_one(&mut *tx)
+            .fetch_one(&mut **tx)
             .await?;
             anyhow::ensure!(valid, LoopStoreError::ScopeMismatch);
             recorded_progress = sqlx::query(
                 "INSERT OR IGNORE INTO loop_progress_receipts(task_note_id, activation_id) VALUES (?, ?)",
-            ).bind(note_id).bind(activation_id).execute(&mut *tx).await?.rows_affected() == 1;
+            ).bind(note_id).bind(activation_id).execute(&mut **tx).await?.rows_affected() == 1;
         }
 
         let continuation = if let Some(next) = &outcome.continuation {
             if let Some(task_id) = &next.task_id {
                 let actionable: bool = sqlx::query_scalar(
                     "SELECT EXISTS(SELECT 1 FROM team_tasks WHERE id = ? AND team_id = ? AND status NOT IN ('completed', 'canceled'))",
-                ).bind(task_id).bind(&current.team_id).fetch_one(&mut *tx).await?;
+                ).bind(task_id).bind(&current.team_id).fetch_one(&mut **tx).await?;
                 anyhow::ensure!(actionable, LoopStoreError::InvalidState);
             }
             let input = LoopTriggerInput {
@@ -137,7 +148,7 @@ impl LoopStore {
                     ..LoopSourceReferences::default()
                 },
             };
-            Some(Self::accept_in_transaction(&mut tx, &input, now).await?)
+            Some(Self::accept_in_transaction(tx, &input, now).await?)
         } else {
             None
         };
@@ -147,15 +158,14 @@ impl LoopStore {
             continuation,
         };
         sqlx::query("UPDATE loop_activations SET state = 'finalizing', outcome_json = ?, updated_at = ? WHERE id = ?")
-            .bind(serde_json::to_string(outcome)?).bind(now).bind(activation_id).execute(&mut *tx).await?;
+            .bind(serde_json::to_string(outcome)?).bind(now).bind(activation_id).execute(&mut **tx).await?;
         sqlx::query("INSERT INTO loop_finish_receipts(activation_id, generation, owner_id, receipt_json) VALUES (?, ?, ?, ?)")
             .bind(activation_id).bind(current.generation).bind(&current.owner_id)
-            .bind(serde_json::to_string(&receipt)?).execute(&mut *tx).await?;
+            .bind(serde_json::to_string(&receipt)?).execute(&mut **tx).await?;
         sqlx::query("UPDATE loop_policies SET no_progress_count = CASE WHEN ? THEN 0 ELSE MIN(no_progress_count + 1, 86400) END, updated_at = ? WHERE actor_id = ?")
-            .bind(recorded_progress).bind(now).bind(&current.actor_id).execute(&mut *tx).await?;
+            .bind(recorded_progress).bind(now).bind(&current.actor_id).execute(&mut **tx).await?;
         sqlx::query("INSERT INTO loop_activation_events(activation_id, kind, generation, created_at) VALUES (?, 'outcome_recorded', ?, ?)")
-            .bind(activation_id).bind(current.generation).bind(now).execute(&mut *tx).await?;
-        tx.commit().await?;
+            .bind(activation_id).bind(current.generation).bind(now).execute(&mut **tx).await?;
         Ok(receipt)
     }
 }

@@ -19,6 +19,8 @@ mod launch_tests;
 mod lifecycle_tests;
 #[path = "metrics_tests.rs"]
 mod metrics_tests;
+#[path = "native_session_tests.rs"]
+mod native_session_tests;
 #[path = "scheduling_tests.rs"]
 mod scheduling_tests;
 #[path = "scope_tests.rs"]

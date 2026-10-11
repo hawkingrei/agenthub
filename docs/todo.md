@@ -22,10 +22,64 @@ Checkpoint: [ACP rollout integration](journal/2026-09-21-acp-rollout-integration
 - [x] Land the follow-up excluding revoked sources from execution reads while retaining their
   history. Evidence: [revoked execution sources](journal/2026-09-27-loop-revoked-execution-sources.md).
 
-Native runtime acceptance and upstream prerequisites remain deferred. PR #1168 integrates the
-existing slices 16-18 with the current mainline; completing tool sources, semantic outcomes and
-approval persistence remains separate work, not a gate for this ACP rollout. Remote loop ownership,
-non-Linux guardians, standalone Mem scope, App authoring UI and cross-owner consent remain separate scope.
+PR #1168 merged the existing native slices 16-18 into main. All remaining local native runtime
+capabilities and upstream prerequisites are active again. The completed ACP rollout remains the
+integration baseline. Contract: [direct runtime integration](features/rara-direct-integration.md).
+Delivery order and acceptance: [native capability rollout](journal/2026-10-05-native-capability-rollout.md).
+Combined producer and protocol identity: [native runtime qualification](journal/2026-10-07-native-runtime-qualification.md).
+
+- [ ] Add capability-negotiated, session-scoped MCP sources through the existing journaled proxy,
+  including App and Mem bindings, revocation, credential isolation and uncertain-write handling.
+  Implementation and deterministic actual-process qualification are complete; upstream publication
+  and applicable CI remain delivery gates. See the rollout checkpoint above.
+- [ ] Map semantic guard outcomes into canonical loop outcomes and clarification waits without
+  treating an ordinary completed provider turn as a structured finish.
+  Implementation now composes the existing finish, conversation and schedule transactions;
+  deterministic actual-process qualification passes; upstream publication and CI remain open. Evidence:
+  [native semantic outcomes](journal/2026-10-06-native-semantic-outcomes.md).
+- [ ] Support cross-process provider continuity with a new fenced activation, preserved task/IM
+  identity and verified old-owner cleanup before replacement execution.
+  Durable opening/binding and exact-session resume receipts are integrated. A committed opening
+  can repair a missing binding after verified cleanup; genuinely unknown results stay blocked.
+  Local loop Resume negotiates full recovery support before opening; actual-process clean restart,
+  approval recovery and uncertain-effect reconciliation preserve the conversation under fresh authority.
+  Standalone Linux continuity now uses independent durable owners and explicit fresh/resume policy;
+  actual-process restart, restored approvals and uncertain-effect reconciliation pass. Standalone browser
+  recovery and refresh also pass against the real backend. Configured-provider standalone restart,
+  approval and uncertain-effect checks pass with the local candidate; assembled Team qualification
+  remains open. Evidence:
+  [native conversation binding](journal/2026-10-06-native-conversation-binding.md) and
+  [native opening reconciliation](journal/2026-10-07-native-opening-reconciliation.md), plus
+  [native resume acceptance](journal/2026-10-07-native-resume-acceptance.md) and
+  [standalone native continuity](journal/2026-10-07-native-standalone-continuity.md).
+- [ ] Persist and recover pending approvals with exact ownership, explicit decision receipts and
+  no automatic replay of uncertain tool execution or approval answers.
+  The outer consumer now gates restored callbacks on current sources, live authority and
+  matching durable reentry receipts/events; explicit reconciliation has an authenticated API.
+  Recovery confirmation now finishes the loop activation as waiting for new durable input,
+  without automatic continuation or replay. Standalone restore now requires its new guarded owner,
+  rejects old callbacks and leaves recovery idle for explicit input. The standalone browser confirms
+  recovery without executing input and retains the later result after refresh. Configured-provider
+  standalone cases also pass with the local candidate; assembled Team qualification remains open. Evidence:
+  [native recovery entry](journal/2026-10-06-native-recovery-entry.md) and
+  [native recovery controls](journal/2026-10-07-native-recovery-controls.md).
+- [ ] Qualify the assembled path with the installed runtime and configured provider: controlled
+  tools, restart/resume, approval recovery, semantic outcomes and nested-subteam isolation.
+  Standalone configured-provider history/approval/recovery pass with the local candidate.
+  All six Team semantic, controlled-tool, nested lifecycle and database/manager recovery
+  entrypoints pass against the assembled local candidate and a deterministic localhost model;
+  external execution still requires payload/destination authorization. See
+  [native Team provider acceptance](journal/2026-10-07-native-team-provider-acceptance.md).
+  The installed `0.0.22` handshake lacks durable resume/recovery, MCP sources and approval
+  persistence; a producer update is required before that binary can pass the assembled gate.
+- [x] Add explicit navigation from retained loop activation records to their stopped transcript.
+  Terminal records now open a separate read-only conversation drawer. Scoped paging, partial-message
+  recovery, denied reads and stale-response isolation are covered; actual backend/browser checks pass
+  after process exit and page reload on desktop and narrow viewports. Evidence:
+  [retained activation transcripts](journal/2026-10-07-retained-activation-transcripts.md).
+
+Remote loop ownership, non-Linux guardians, standalone Mem scope, App authoring UI and cross-owner
+consent remain separate scope.
 
 ## Release And Packaging
 

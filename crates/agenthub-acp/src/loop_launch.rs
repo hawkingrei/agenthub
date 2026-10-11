@@ -133,7 +133,8 @@ impl AcpLoopLaunchConfig {
         Ok(())
     }
 
-    pub(super) fn mcp_servers(&self) -> Vec<agent_client_protocol::schema::v1::McpServer> {
+    /// Reuse authorized local proxy descriptors across provider transports.
+    pub fn mcp_servers(&self) -> Vec<agent_client_protocol::schema::v1::McpServer> {
         use agent_client_protocol::schema::v1::{EnvVariable, McpServer, McpServerStdio};
         self.mcp_proxies
             .iter()

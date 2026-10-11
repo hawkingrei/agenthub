@@ -13,7 +13,10 @@ mod native;
 mod permissions;
 mod projection;
 mod questions;
+mod recovery;
 mod sources;
+#[cfg(target_os = "linux")]
+mod standalone;
 
 const PEER: &str = r#"#!/usr/bin/env python3
 import json, os, pathlib, signal, subprocess, sys, time
@@ -53,10 +56,12 @@ if mode in ('replay', 'gap'):
     methods.append('output.replay')
 if mode.startswith('source_'):
     methods.extend(['prompt_source.register', 'skill_source.register'])
+    if mode != 'source_missing_mcp':
+        methods.extend(['mcp_source.register', 'mcp_source.unregister', 'mcp_source.query'])
 emit('handshake', {'protocol_version': 1, 'runtime_version': 'fixture', 'runtime_id': runtime,
-    'transport': 'stdio-jsonl', 'request_families': ['session', 'input', 'server'] + (['output'] if mode in ('replay', 'gap') else []) + (['prompt_source', 'skill_source'] if mode.startswith('source_') else []),
+    'transport': 'stdio-jsonl', 'request_families': ['session', 'input', 'server'] + (['output'] if mode in ('replay', 'gap') else []) + (['prompt_source', 'skill_source'] if mode.startswith('source_') else []) + (['mcp_source'] if mode.startswith('source_') and mode != 'source_missing_mcp' else []),
     'request_methods': methods,
-    'event_families': ['session', 'input', 'assistant', 'tool', 'approval', 'plan', 'warning', 'error'] + (['prompt_source', 'skill'] if mode.startswith('source_') else []),
+    'event_families': ['session', 'input', 'assistant', 'tool', 'approval', 'plan', 'warning', 'error'] + (['prompt_source', 'skill', 'mcp'] if mode.startswith('source_') else []),
     'capabilities': {'graceful_shutdown': True, 'approval_persistence': False,
         'replay': ({'lifetime': 'runtime', 'max_events_per_session': 256} if mode in ('replay', 'gap') else {'lifetime': 'unavailable'}),
         'request_receipts': {'lifetime': 'runtime', 'max_requests': 32}},
@@ -108,13 +113,17 @@ for line in sys.stdin:
                         sequence += 1
                 body = envelope['request']['payload']['payload']
                 family = 'prompt_source' if operation == 'register' else 'skill'
+                kind = 'registered'
                 payload = {'source_id': body['source_id']}
+                if envelope['request']['type'] == 'mcp_source':
+                    family, kind = 'mcp', 'source_registered'
+                    payload['tool_names'] = []
                 if family == 'skill':
                     payload['name'] = body['name']
                 emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
                     'event_id': 'event-' + str(sequence), 'sequence': sequence,
                     'provenance': {'session_id': None},
-                    'event': {'type': family, 'payload': {'type': 'registered', 'payload': payload}}}})
+                    'event': {'type': family, 'payload': {'type': kind, 'payload': payload}}}})
                 continue
             if operation in ('cancel_current_turn', 'interrupt_current_turn'):
                 turn = request['payload']['expected_turn_id']
@@ -141,7 +150,7 @@ for line in sys.stdin:
                 result = {'status': 'queued', 'session_id': native}
             else:
                 result = {'status': 'accepted', 'session_id': native, 'turn_id': 'turn-' + str(inputs), 'last_sequence': sequence}
-            question_answer = mode.startswith('input_question_') and operation == 'answer_pending_input'
+            question_answer = mode.startswith('input_question') and operation == 'answer_pending_input'
             if question_answer:
                 result['last_sequence'] = {'input_question_no_cursor': None,
                     'input_question_zero_cursor': 0}.get(mode, sequence)
@@ -153,7 +162,7 @@ for line in sys.stdin:
             if mode == 'input_ack_only':
                 continue
             if question_answer and result['status'] == 'accepted':
-                if mode != 'input_question_reject_once':
+                if mode in ('input_question_no_cursor', 'input_question_zero_cursor', 'input_question_stale_cursor'):
                     deadline = time.monotonic() + 10
                     while not (root / 'release-question-events').exists():
                         assert time.monotonic() < deadline
@@ -183,6 +192,11 @@ for line in sys.stdin:
                         'provenance': {'session_id': None}, 'event': {'type': 'input', 'payload': {'type': 'requested', 'payload': {
                             'pending': {'turn_id': 'turn-' + str(inputs), 'kind': {'type': 'user', 'payload': {
                                 'question': 'Choose a path', 'options': [['alpha', 'First path']], 'note': None}}}}}}}})
+                    sequence += 1
+                    emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+                        'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-' + str(inputs),
+                        'provenance': {'session_id': None}, 'event': {'type': 'session', 'payload': {
+                            'type': 'turn_finished', 'payload': {'reason': 'awaiting_input'}}}}})
                 if mode.startswith('permission_') and operation == 'submit_user_prompt':
                     kind = 'plan' if mode == 'permission_plan' else 'shell'
                     body = {'approval_id': 'approval-1', 'plan': 'Review the release'} if kind == 'plan' else {'approval_id': 'approval-1', 'request': {'command': 'echo fixture', 'justification': 'Fixture approval'}}
@@ -194,6 +208,11 @@ for line in sys.stdin:
                         emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
                             'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-1',
                             'provenance': {'session_id': None}, 'event': {'type': family, 'payload': payload}}})
+                    sequence += 1
+                    emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+                        'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-1',
+                        'provenance': {'session_id': None}, 'event': {'type': 'session', 'payload': {
+                            'type': 'turn_finished', 'payload': {'reason': 'awaiting_input'}}}}})
                     if mode == 'permission_drop':
                         while not (root / 'drop-permission').exists():
                             time.sleep(0.01)
@@ -260,6 +279,10 @@ impl Fixture {
 
     async fn new(scenario: &str) -> Self {
         let state = crate::api::team_tests::build_test_state().await;
+        Self::with_state(scenario, state).await
+    }
+
+    async fn with_state(scenario: &str, state: crate::state::AppState) -> Self {
         let directory =
             std::env::temp_dir().join(format!("direct-runtime-test-{}", Uuid::new_v4()));
         std::fs::create_dir(&directory).unwrap();
@@ -316,6 +339,13 @@ impl Fixture {
         .await
         .unwrap();
         assert_eq!(running, 0);
+        assert!(
+            agenthub_db::native_sessions::NativeSessionStore::new(self.manager.db.clone())
+                .active_owner(&self.agent_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     async fn finish(self) {
@@ -434,7 +464,17 @@ async fn managed_shutdown_timeout_uses_supervisor_fallback() {
         fixture.manager.stop_agent(&fixture.agent_id).await.unwrap();
         assert!(fixture.directory.join("shutdown").exists());
         assert!(!fixture.directory.join("complete").exists());
+        #[cfg(not(target_os = "linux"))]
         assert!(fixture.directory.join("forced").exists());
+        #[cfg(target_os = "linux")]
+        for file in ["pid", "descendant"] {
+            if let Ok(pid) = std::fs::read_to_string(fixture.directory.join(file)) {
+                assert!(
+                    !std::path::Path::new(&format!("/proc/{}", pid.trim())).exists(),
+                    "guardian must reap every owned process before returning"
+                );
+            }
+        }
         fixture.assert_clean().await;
         fixture.finish().await;
     }

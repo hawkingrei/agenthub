@@ -246,14 +246,15 @@ export function buildTeamRun(
 
 
 export async function mockTeamPageApis(
-  page: import("@playwright/test").Page
+  page: import("@playwright/test").Page,
+  role = "root"
 ): Promise<TeamPageFixture> {
   const now = 1_700_000_000;
   const auth: StoredAuthState = {
     token: "token-e2e",
     userId: "user-e2e",
     username: "e2e-user",
-    role: "root",
+    role,
   };
   const agents: E2eAgentRecord[] = [
     {

@@ -45,9 +45,12 @@ These are responsibilities, not a requirement to create seven crates or services
 managers, stores, scheduling, actor transport, and supervision where ownership matches. The daemon
 hosts the scheduler; individual agent processes can be temporary.
 
-This rollout uses the existing ACP adapters; native runtime integration is deferred. Adapter
-capability differences, including resumable provider continuity and permission lifetimes, change
-what the scheduler may claim about a loop, never task or IM authority.
+The ACP rollout is integrated. Native runtime integration also admits fresh local activations;
+its remaining capabilities are active work under the
+[direct runtime contract](rara-direct-integration.md). Adapter capability differences, including
+resumable provider continuity and permission lifetimes, change what the scheduler may claim about
+a loop, never task or IM authority. Planned capabilities remain unavailable until implemented and
+negotiated with the provider.
 
 Identity mapping:
 

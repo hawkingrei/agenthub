@@ -172,6 +172,32 @@ describe("retained activation and wake history", () => {
     vi.unstubAllGlobals();
   });
 
+  it("opens the recorded transcript only for activations with a local session", async () => {
+    vi.spyOn(api, "listTeamMemberActivations").mockResolvedValue({
+      activations: [
+        { ...activation, session_id: "retired-session" },
+        { ...activation, id: "unstarted" },
+        { ...activation, id: "current", state: "running", session_id: "current-session" },
+      ],
+      next_cursor: null,
+    });
+    const read = vi.spyOn(api, "listAgentEvents").mockResolvedValue([{
+      event_id: 1, agent_id: "worker", session_id: "retired-session", seq: "1", ts: 1, stream: "acp",
+      message: JSON.stringify({ type: "agent_message", text: "Stopped activation answer", message_id: "retained" }),
+    }]);
+    await render();
+    expect([...container.querySelectorAll("button")].filter(button => button.textContent === "View transcript")).toHaveLength(1);
+    await click("View transcript");
+    expect(read).toHaveBeenCalledExactlyOnceWith("token", "worker", 100, "retired-session", null, expect.any(AbortSignal));
+    expect(document.body.textContent).toContain("Stopped activation answer");
+    expect(document.body.textContent).toContain("Read-only conversation recorded for this activation.");
+    const close = document.querySelector<HTMLButtonElement>('button[aria-label="Close transcript"]');
+    expect(close).not.toBeNull();
+    await act(async () => close!.click());
+    expect(document.body.textContent).not.toContain("Stopped activation answer");
+    expect(read.mock.calls[0][5]!.aborted).toBe(true);
+  });
+
   it("keeps bounded wakes explicit and resets older pages on refresh", async () => {
     const history = vi
       .mocked(api.listTeamMemberActivations)

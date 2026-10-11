@@ -20,9 +20,25 @@ pub(super) async fn control(
     request: ControlRequest,
 ) -> anyhow::Result<RuntimeRequestAck> {
     let request_id = Uuid::now_v7().to_string();
+    control_with_id(tasks, client, store, session, request, request_id).await
+}
+
+pub(super) async fn control_with_id(
+    tasks: &DaemonTaskGroup,
+    client: &Client,
+    store: &RuntimeEventStore,
+    session: Option<&str>,
+    request: ControlRequest,
+    request_id: String,
+) -> anyhow::Result<RuntimeRequestAck> {
     let frame = request.frame(store.runtime_id(), &request_id, session)?;
     let kind = kind(request.kind());
-    let session = session.map(str::to_owned);
+    // The wire opening has no live session provenance. The durable intent still
+    // fences the resumed identity so a wrong-session ACK cannot create ownership.
+    let session = match &request {
+        ControlRequest::ResumeSession { session_id } => Some(session_id.clone()),
+        _ => session.map(str::to_owned),
+    };
     let turn = request.expected_turn_id().map(str::to_owned);
     let client = client.clone();
     let store = store.clone();
@@ -48,8 +64,13 @@ pub(super) async fn control(
 pub(super) fn kind(kind: ControlKind) -> RuntimeRequestKind {
     match kind {
         ControlKind::CreateSession => RuntimeRequestKind::CreateSession,
+        ControlKind::ResumeSession => RuntimeRequestKind::ResumeSession,
         ControlKind::Query => RuntimeRequestKind::Query,
+        ControlKind::QueryRecovery => RuntimeRequestKind::QueryRecovery,
+        ControlKind::ResolveRecovery => RuntimeRequestKind::ResolveRecovery,
+        ControlKind::EvaluateReentry => RuntimeRequestKind::EvaluateReentry,
         ControlKind::Prompt => RuntimeRequestKind::Prompt,
+        ControlKind::GuardedPrompt => RuntimeRequestKind::GuardedPrompt,
         ControlKind::FollowUp => RuntimeRequestKind::FollowUp,
         ControlKind::Cancel => RuntimeRequestKind::Cancel,
         ControlKind::Interrupt => RuntimeRequestKind::Interrupt,
@@ -58,6 +79,7 @@ pub(super) fn kind(kind: ControlKind) -> RuntimeRequestKind {
         ControlKind::ShellAnswer => RuntimeRequestKind::ShellAnswer,
         ControlKind::PromptSource => RuntimeRequestKind::PromptSource,
         ControlKind::SkillSource => RuntimeRequestKind::SkillSource,
+        ControlKind::McpSource => RuntimeRequestKind::McpSource,
     }
 }
 

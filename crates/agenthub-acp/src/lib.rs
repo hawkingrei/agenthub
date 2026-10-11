@@ -3,6 +3,9 @@ mod loop_launch;
 pub use loop_launch::{AcpLoopLaunchConfig, LOOP_ACTIVATION_CONTRACT_VERSION};
 #[cfg(test)]
 mod static_mcp_tests;
+
+#[cfg(test)]
+mod permission_publication_tests;
 mod team_role_skills;
 #[cfg(test)]
 mod test_utils;
@@ -2210,6 +2213,9 @@ impl AcpPermissionService {
         let routing_requester_role = routing
             .as_ref()
             .and_then(|value| value.requester_role.clone());
+        // A reviewer can observe the row as soon as INSERT commits. Keep response
+        // delivery behind this lock until its callback and waiting status are ready.
+        let mut pending = self.pending.lock().await;
         self.runtime_handle
             .spawn(async move {
                 sqlx::query(
@@ -2241,7 +2247,6 @@ impl AcpPermissionService {
             .await;
 
         let (tx, rx) = oneshot::channel();
-        let mut pending = self.pending.lock().await;
         pending.insert(id.clone(), tx);
         Ok((id, rx))
     }

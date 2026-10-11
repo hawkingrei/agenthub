@@ -1,6 +1,6 @@
 {
-  "upstream_commit": "6f489462251b73e1695bb22a59d2ece59ba26a21",
-  "binary_sha256": "08f6e9b90704b60491efd6115acee7bd7a6c8c5a27cf80c2ee12f51002f190b4",
+  "upstream_commit": "df7ed52b684aa175cb1f280ea306abaafedf73e2",
+  "binary_sha256": "dc82a0c5eca3dd464faa3a2c4ec36fae1cda629b91b2b51b9fd10adc1525c283",
   "frames": [
     {
       "type": "handshake",
@@ -14,6 +14,7 @@
           "input",
           "prompt_source",
           "skill_source",
+          "mcp_source",
           "output",
           "server"
         ],
@@ -23,6 +24,7 @@
           "session.cancel",
           "session.interrupt",
           "input.submit_prompt",
+          "input.submit_guarded_prompt",
           "input.submit_follow_up",
           "input.answer_user",
           "input.answer_plan",
@@ -33,10 +35,18 @@
           "skill_source.register",
           "skill_source.disable",
           "skill_source.query",
+          "mcp_source.register",
+          "mcp_source.unregister",
+          "mcp_source.query",
           "output.replay",
-          "server.shutdown"
+          "server.shutdown",
+          "session.resume",
+          "session.query_recovery",
+          "session.evaluate_reentry",
+          "session.resolve_recovery"
         ],
         "event_families": [
+          "semantic_guard",
           "session",
           "input",
           "assistant",
@@ -56,7 +66,7 @@
         ],
         "capabilities": {
           "graceful_shutdown": true,
-          "approval_persistence": false,
+          "approval_persistence": true,
           "replay": {
             "lifetime": "runtime",
             "max_events_per_session": 256

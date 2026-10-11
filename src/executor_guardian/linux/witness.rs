@@ -7,6 +7,7 @@ use std::os::unix::fs::{DirBuilderExt, FileExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
 use agenthub_agent_domain::loop_runtime::LoopReservation;
+use agenthub_db::native_sessions::NativeExecutionOwner;
 use nix::fcntl::{FcntlArg, FdFlag, fcntl};
 use sha2::{Digest, Sha256};
 
@@ -35,9 +36,27 @@ fn identity(reservation: &LoopReservation) -> [u8; 32] {
 }
 
 fn path(base: &Path, reservation: &LoopReservation) -> PathBuf {
+    identity_path(base, &identity(reservation))
+}
+
+fn standalone_identity(owner: &NativeExecutionOwner) -> [u8; 32] {
+    Sha256::digest(
+        serde_json::to_vec(&(
+            "guardian-standalone-v1",
+            &owner.agent_id,
+            &owner.local_session_id,
+            &owner.owner_id,
+            owner.generation,
+        ))
+        .expect("native owner identity is serializable"),
+    )
+    .into()
+}
+
+fn identity_path(base: &Path, identity: &[u8; 32]) -> PathBuf {
     use std::fmt::Write;
     let mut name = String::with_capacity(64);
-    for byte in identity(reservation) {
+    for byte in identity {
         write!(&mut name, "{byte:02x}").expect("String write");
     }
     base.join(".executor-recovery").join(name)
@@ -45,9 +64,20 @@ fn path(base: &Path, reservation: &LoopReservation) -> PathBuf {
 
 impl CleanupWitness {
     pub(crate) fn prepare(base: &Path, reservation: &LoopReservation) -> io::Result<Self> {
+        Self::prepare_identity(base, &identity(reservation))
+    }
+
+    pub(crate) fn prepare_standalone(
+        base: &Path,
+        owner: &NativeExecutionOwner,
+    ) -> io::Result<Self> {
+        Self::prepare_identity(base, &standalone_identity(owner))
+    }
+
+    fn prepare_identity(base: &Path, identity: &[u8; 32]) -> io::Result<Self> {
         // Event databases are created lazily; the first guarded launch may precede all output.
         std::fs::create_dir_all(base)?;
-        let path = path(base, reservation);
+        let path = identity_path(base, identity);
         let directory = path.parent().expect("witness directory");
         match DirBuilder::new().mode(0o700).create(directory) {
             Ok(()) => {}
@@ -69,7 +99,7 @@ impl CleanupWitness {
             .open(&path)?;
         file.try_lock().map_err(io::Error::other)?;
         let mut contents = [PREPARED; LENGTH];
-        contents[1..].copy_from_slice(&identity(reservation));
+        contents[1..].copy_from_slice(identity);
         file.write_all_at(&contents, 0)?;
         file.sync_all()?;
         File::open(directory)?.sync_all()?;
@@ -109,11 +139,22 @@ impl CleanupWitness {
     /// Keep this lock alive through the database CAS. A launcher or guardian still owning the
     /// original open-file description prevents recovery, including the pre-exec window.
     pub(crate) fn verify(base: &Path, reservation: &LoopReservation) -> io::Result<Option<Self>> {
+        Self::verify_identity(base, &identity(reservation))
+    }
+
+    pub(crate) fn verify_standalone(
+        base: &Path,
+        owner: &NativeExecutionOwner,
+    ) -> io::Result<Option<Self>> {
+        Self::verify_identity(base, &standalone_identity(owner))
+    }
+
+    fn verify_identity(base: &Path, identity: &[u8; 32]) -> io::Result<Option<Self>> {
         let file = match OpenOptions::new()
             .read(true)
             .write(true)
             .custom_flags(nix::libc::O_NOFOLLOW)
-            .open(path(base, reservation))
+            .open(identity_path(base, identity))
         {
             Ok(file) => file,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
@@ -130,14 +171,22 @@ impl CleanupWitness {
         }
         let mut contents = [0; LENGTH];
         file.read_exact_at(&mut contents, 0)?;
-        if !matches!(contents[0], PREPARED | CLEANED) || contents[1..] != identity(reservation) {
+        if !matches!(contents[0], PREPARED | CLEANED) || contents[1..] != *identity {
             return Ok(None);
         }
         Ok(Some(Self { file }))
     }
 
     pub(crate) fn retire(base: &Path, reservation: &LoopReservation) {
-        if let Err(error) = std::fs::remove_file(path(base, reservation))
+        Self::retire_path(path(base, reservation));
+    }
+
+    pub(crate) fn retire_standalone(base: &Path, owner: &NativeExecutionOwner) {
+        Self::retire_path(identity_path(base, &standalone_identity(owner)));
+    }
+
+    fn retire_path(path: PathBuf) {
+        if let Err(error) = std::fs::remove_file(path)
             && error.kind() != io::ErrorKind::NotFound
         {
             tracing::warn!(%error, "could not retire executor cleanup witness");
@@ -149,6 +198,69 @@ impl CleanupWitness {
 mod tests {
     use super::*;
     use std::os::unix::fs::{PermissionsExt, symlink};
+
+    #[test]
+    fn standalone_witness_fences_every_owner_dimension_and_loop_namespace() {
+        let (directory, reservation) = super::super::tests::recovery_fixture();
+        let owner = NativeExecutionOwner {
+            agent_id: reservation.actor_id.clone(),
+            local_session_id: "local".into(),
+            owner_id: reservation.owner_id.clone(),
+            generation: reservation.generation,
+        };
+        let witness = CleanupWitness::prepare_standalone(&directory, &owner).unwrap();
+        assert!(
+            CleanupWitness::verify_standalone(&directory, &owner)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            CleanupWitness::verify(&directory, &reservation)
+                .unwrap()
+                .is_none()
+        );
+        for field in 0..4 {
+            let mut other = owner.clone();
+            match field {
+                0 => other.agent_id = "other".into(),
+                1 => other.local_session_id = "other".into(),
+                2 => other.owner_id = "other".into(),
+                _ => other.generation += 1,
+            }
+            assert!(
+                CleanupWitness::verify_standalone(&directory, &other)
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        witness.mark_started().unwrap();
+        drop(witness);
+        assert!(
+            CleanupWitness::verify_standalone(&directory, &owner)
+                .unwrap()
+                .is_none()
+        );
+        CleanupWitness::retire_standalone(&directory, &owner);
+        let witness = CleanupWitness::prepare_standalone(&directory, &owner).unwrap();
+        witness.mark_cleaned().unwrap();
+        drop(witness);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let proof = loop {
+            if let Some(proof) = CleanupWitness::verify_standalone(&directory, &owner).unwrap() {
+                break proof;
+            }
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+        assert!(
+            CleanupWitness::verify_standalone(&directory, &owner)
+                .unwrap()
+                .is_none()
+        );
+        CleanupWitness::retire_standalone(&directory, &owner);
+        drop(proof);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn guardian_recovery_rejects_corruption_identity_replacement_and_symlinks() {

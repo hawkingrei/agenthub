@@ -104,7 +104,7 @@ pub(super) async fn reserve_in_transaction(
     .bind(&policy.actor_id)
     .fetch_one(&mut **tx)
     .await?;
-    if held {
+    if held || crate::native_sessions::has_held_owner(tx, &policy.actor_id).await? {
         return Err(LoopStoreError::ReservationHeld.into());
     }
     let generation = policy

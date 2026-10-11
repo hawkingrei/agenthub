@@ -14,6 +14,15 @@ pub struct RaraConfig {
     pub default_model: Option<String>,
     pub startup_timeout_seconds: Option<u64>,
     pub shutdown_timeout_seconds: Option<u64>,
+    pub standalone_session_policy: Option<RaraSessionPolicy>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RaraSessionPolicy {
+    #[default]
+    Fresh,
+    Resume,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,6 +32,7 @@ pub struct RaraLaunchConfig {
     pub default_model: Option<String>,
     pub startup_timeout: Duration,
     pub shutdown_timeout: Duration,
+    pub standalone_session_policy: RaraSessionPolicy,
 }
 
 impl RaraConfig {
@@ -70,6 +80,7 @@ impl RaraConfig {
             default_model: model,
             startup_timeout,
             shutdown_timeout,
+            standalone_session_policy: self.standalone_session_policy.unwrap_or_default(),
         })
     }
 }
@@ -102,6 +113,7 @@ mod tests {
         assert_eq!(config.default_model, None);
         assert_eq!(config.startup_timeout, Duration::from_secs(120));
         assert_eq!(config.shutdown_timeout, Duration::from_secs(30));
+        assert_eq!(config.standalone_session_policy, RaraSessionPolicy::Fresh);
         assert_eq!(app.codex_acp_binary(), "agenthubd");
     }
 
@@ -116,6 +128,7 @@ mod tests {
             default_model = "fixture"
             startup_timeout_seconds = 45
             shutdown_timeout_seconds = 10
+            standalone_session_policy = "resume"
         "#,
         )
         .unwrap();
@@ -134,6 +147,10 @@ mod tests {
         assert_eq!(resolved.default_model.as_deref(), Some("override"));
         assert_eq!(resolved.startup_timeout, Duration::from_secs(45));
         assert_eq!(resolved.shutdown_timeout, Duration::from_secs(20));
+        assert_eq!(
+            resolved.standalone_session_policy,
+            RaraSessionPolicy::Resume
+        );
     }
 
     #[test]
@@ -149,6 +166,7 @@ mod tests {
             assert!(config.resolve_with(|_| None).is_err(), "{body}");
         }
         assert!(toml::from_str::<RaraConfig>("api_key = 'private'").is_err());
+        assert!(toml::from_str::<RaraConfig>("standalone_session_policy = 'auto'").is_err());
         let error = RaraConfig::default()
             .resolve_with(|key| (key == "AGENTHUB_RARA_MODEL").then(|| "private\nvalue".into()))
             .unwrap_err();

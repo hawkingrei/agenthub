@@ -27,6 +27,11 @@ Process diagnostics. Channel member profiles expose the same panel without selec
 Assigned task links open the canonical task route, while ordinary channel and task views retain
 their existing durable APIs.
 
+Terminal activation records with a local session expose `View transcript`. This opens a separate
+read-only drawer using the authorized, session-scoped agent event API and the shared ACP conversation
+renderer. It preserves the selected activation's session without changing the live diagnostics
+selection or starting a process.
+
 The configuration controller scopes reads and mutations to user, Team, member, and authentication
 lifetime. History uses abortable, bounded keyset pages. The server remains the authority for access,
 policy revisions, preflight, and admission.
@@ -53,6 +58,14 @@ policy revisions, preflight, and admission.
   task review remains separate.
 - Activation details show redacted source summaries, ordered lifecycle events, and durable tool
   observations. The UI never needs private launch credentials or raw tool arguments/results.
+- Transcript access follows the existing agent-event permissions. The selected user/authentication,
+  Team, member, activation and local session scope every read. Scope changes abort pending reads and
+  discard late results; mismatched response identities fail visibly. Access failures are not presented
+  as an empty conversation.
+- Retained transcripts offer explicit refresh and older-page controls, with no input, approval or
+  recovery mutations. An incomplete leading response stays hidden until its earlier chunks are loaded.
+  Initial recovery fetches at most one additional bounded page; further paging requires user action.
+  Transcript selection pauses background activation-history refresh.
 - Wake information is derived from the loaded pending activations and active schedule records.
   Further pages are explicit; a partial page is not presented as the globally earliest wake.
   Due times remain subject to execution policy and limits. Read failures do not imply no work.
@@ -69,6 +82,7 @@ policy revisions, preflight, and admission.
 | Conflict and uncertain write handling | Configuration controller tests with lost responses and changed revisions |
 | Activation retry identity | Controller unmount/remount, user/Team/member isolation, and duplicate receipt tests |
 | Bounded retained history | Cursor-zero, pagination, abort, late-response, error, and detail interaction tests |
+| Retained transcript navigation | Terminal-only entry, exact old session, read-only rendering, partial chunks and denied-read tests; actual backend/browser close, reload and reopen after process exit |
 | Page independence | Fake ACP provider held while the application page closes, then finishes before page reopen |
 | Web integration | Vitest, TypeScript, ESLint, build, and PR CI |
 
@@ -95,5 +109,6 @@ replacement is needed.
 ## Source Journals
 
 - [Loop workspace UI](../journal/2026-09-17-loop-workspace-ui.md)
+- [Retained activation transcripts](../journal/2026-10-07-retained-activation-transcripts.md)
 - [Offline configuration](../journal/2026-09-15-agent-loop-offline-configuration.md)
 - [Durable history and diagnostics](../journal/2026-09-17-loop-history-storage.md)

@@ -32,6 +32,9 @@ impl TeamManager {
             }
         }
         for actor in next_members.keys() {
+            if !previous_members.contains_key(actor) {
+                Self::require_loop_actor_quiescent_tx(tx, actor).await?;
+            }
             if Self::uses_loop_execution(next) && !previous_members.contains_key(actor) {
                 let running: bool = sqlx::query_scalar(
                     "SELECT EXISTS(SELECT 1 FROM agent_sessions WHERE agent_id = ? AND ended_at IS NULL) OR EXISTS(SELECT 1 FROM loop_execution_reservations WHERE actor_id = ?)",
@@ -42,7 +45,6 @@ impl TeamManager {
                         "stop and fence execution before moving this identity into a Team"
                     )
                 );
-                Self::require_loop_actor_quiescent_tx(tx, actor).await?;
             }
             let policy_team: Option<String> =
                 sqlx::query_scalar("SELECT team_id FROM loop_policies WHERE actor_id = ?")

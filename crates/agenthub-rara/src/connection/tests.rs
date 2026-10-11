@@ -313,6 +313,9 @@ async fn cancelled_caller_does_not_retract_or_repeat_the_request() {
 async fn unsupported_requests_and_capacity_preserve_a_shutdown_receipt() {
     let mut handshake = hello();
     handshake.capabilities.request_receipts = ReceiptCapability::Runtime { max_requests: 2 };
+    handshake
+        .request_methods
+        .retain(|method| method != "session.resume");
     let (connection, mut peer) = open(handshake, ConnectionOptions::default()).await;
     let mut wrong = create("wrong");
     if let ClientFrame::Control { runtime_id, .. } = &mut wrong {

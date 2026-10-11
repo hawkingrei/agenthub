@@ -1,5 +1,8 @@
 mod digest;
 mod native;
+mod semantic_guard;
+#[cfg(test)]
+mod semantic_guard_tests;
 mod telemetry;
 #[cfg(test)]
 mod tests;
@@ -31,12 +34,15 @@ pub enum EventEffect {
     None,
     Created,
     Snapshot(SessionSnapshot),
+    Recovery(crate::RecoveryStatus),
+    Reentry(crate::ReentryEvaluation),
     TurnStarted {
         turn_id: String,
     },
     TurnEnded {
         turn_id: String,
         outcome: TurnEnd,
+        semantic: Option<crate::SemanticGuardDecision>,
     },
     InputRequested {
         pending: PendingInput,
@@ -69,6 +75,7 @@ pub struct EventProjector {
     question_turn: Option<String>,
     pending_turn: Option<String>,
     active_turn: Option<String>,
+    guard: semantic_guard::GuardTracker,
     tools: BTreeMap<String, OpenTool>,
 }
 
@@ -105,6 +112,7 @@ impl EventProjector {
             question_turn: None,
             pending_turn: None,
             active_turn: None,
+            guard: semantic_guard::GuardTracker::default(),
             tools: BTreeMap::new(),
         })
     }
@@ -133,6 +141,7 @@ impl EventProjector {
         if !matches!(event, NativeEvent::Assistant(_)) {
             self.chunk = None;
         }
+        let semantic = self.guard.observe(frame, &event)?;
         let mut effect = EventEffect::None;
         match event {
             NativeEvent::Assistant(event) => {
@@ -143,6 +152,9 @@ impl EventProjector {
             }
             NativeEvent::Session(event) => self.session(frame, event, &mut history, &mut effect)?,
             NativeEvent::Input(event) => self.input(frame, event, &mut history, &mut effect)?,
+            NativeEvent::SemanticGuard(guard) => {
+                history.push(update(json!({"event":"semantic_guard", "guard":guard})));
+            }
             NativeEvent::Approval(ApprovalEvent::Requested { approval_id, kind }) => {
                 validate_id(&approval_id)?;
                 validate_label(&kind)?;
@@ -227,6 +239,12 @@ impl EventProjector {
             | NativeEvent::Extension(payload) => {
                 history.push(update(telemetry::project(family, kind, &payload)?));
             }
+        }
+        if let EventEffect::TurnEnded {
+            semantic: result, ..
+        } = &mut effect
+        {
+            *result = semantic;
         }
         for entry in &mut history {
             if let ProjectedHistory::Conversation(value) = entry {
@@ -362,6 +380,23 @@ impl EventProjector {
         effect: &mut EventEffect,
     ) -> Result<(), ProtocolError> {
         match event {
+            SessionEvent::RecoveryState { state } => {
+                require_control_origin(frame)?;
+                state.validate()?;
+                history.push(update(json!({"event":"recovery_state", "state":state})));
+                *effect = EventEffect::Recovery(state);
+            }
+            SessionEvent::ReentryEvaluated { evaluation } => {
+                require_control_origin(frame)?;
+                evaluation.validate()?;
+                if evaluation.origin.runtime_id != frame.runtime_id {
+                    return Err(ProtocolError::InvalidTarget);
+                }
+                history.push(update(
+                    json!({"event":"reentry_evaluated", "evaluation":evaluation}),
+                ));
+                *effect = EventEffect::Reentry(evaluation);
+            }
             SessionEvent::Created { session_id } | SessionEvent::Resumed { session_id } => {
                 if session_id != self.session_id {
                     return Err(ProtocolError::InvalidTarget);
@@ -398,6 +433,7 @@ impl EventProjector {
                 *effect = EventEffect::TurnEnded {
                     turn_id: required_turn(frame)?,
                     outcome: TurnEnd::Finished { reason },
+                    semantic: None,
                 };
                 history.push(run_status(status));
             }
@@ -406,6 +442,7 @@ impl EventProjector {
                 self.retire_tools(&required_turn(frame)?, history);
                 *effect = EventEffect::TurnEnded {
                     turn_id: required_turn(frame)?,
+                    semantic: None,
                     outcome: if interrupted {
                         TurnEnd::Interrupted
                     } else {
@@ -420,6 +457,7 @@ impl EventProjector {
                 *effect = EventEffect::TurnEnded {
                     turn_id: required_turn(frame)?,
                     outcome: TurnEnd::Failed,
+                    semantic: None,
                 };
                 history.push(run_status("error"));
                 history.push(ProjectedHistory::System("Runtime turn failed.".into()));
@@ -680,6 +718,12 @@ impl SessionSnapshot {
             SessionPhase::Running { turn_id } | SessionPhase::Cancelling { turn_id } => {
                 validate_id(turn_id)?
             }
+            SessionPhase::RecoveryRequired { recovery_id } => {
+                crate::recovery::validate_recovery_id(recovery_id)?;
+                if self.pending_input.is_some() {
+                    return Err(ProtocolError::InvalidTarget);
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -691,12 +735,25 @@ impl SessionPhase {
         match self {
             Self::Idle => "idle",
             Self::AwaitingInput { .. } => "awaiting_input",
+            Self::RecoveryRequired { .. } => "recovery_required",
             Self::Running { .. } => "running",
             Self::Cancelling { .. } => "cancelling",
             Self::Closing => "closing",
             Self::Closed => "closed",
         }
     }
+}
+
+fn require_control_origin(frame: &EventFrame) -> Result<(), ProtocolError> {
+    if frame.event.turn_id.is_some()
+        || frame.event.provenance["session_id"].as_str() != Some(frame.session_id.as_str())
+        || frame.event.provenance["controller"] != "runtime"
+        || frame.event.provenance["trust"] != "trusted"
+        || frame.event.provenance["authorship"] != "runtime"
+    {
+        return Err(ProtocolError::InvalidTarget);
+    }
+    Ok(())
 }
 
 fn required_turn(frame: &EventFrame) -> Result<String, ProtocolError> {

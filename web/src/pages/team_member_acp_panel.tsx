@@ -23,6 +23,8 @@ import {
 import { useTeamMemberAcpInput } from "./team/use_team_member_acp_input";
 import { useTeamMemberAcpPanelState } from "./team/use_team_member_acp_panel_state";
 import { Badge } from "../ui/primitives";
+import { NativeRecoveryPanel } from "../components/native_recovery_panel";
+import { hasNativeRuntime } from "../native_recovery";
 import {
   OUTPUT_HEADER_TITLE_CLASS,
   OUTPUT_HEADER_TITLE_HEADING_CLASS,
@@ -51,6 +53,7 @@ import {
 } from "../ui/tailwind_classes";
 
 type TeamMemberAcpPanelProps = {
+  recoveryToken?: string;
   developerMode: boolean;
   selectedMemberId: string;
   memberTitle?: string | null;
@@ -368,6 +371,9 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
           </div>
         </div>
       )}
+
+      <NativeRecoveryPanel token={props.recoveryToken} agentId={selectedMemberId} localSessionId={selectedSessionId}
+        nativeRuntime={hasNativeRuntime(acpView)} canOperate={canControlAcp} />
 
       {hasVisibleInputDock && (
         <div className={TEAM_MEMBER_ACP_INPUT_DOCK_SHELL_CLASS}>

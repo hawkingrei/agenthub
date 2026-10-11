@@ -26,11 +26,183 @@ fn accepted(session: &str) -> RuntimeRequestAck {
 }
 
 #[tokio::test]
+async fn recovery_control_receipts_cannot_admit_a_worker_turn_or_change_session() {
+    let fixture = Fixture::new().await;
+    for (id, kind) in [
+        ("query-recovery", RuntimeRequestKind::QueryRecovery),
+        ("resolve-recovery", RuntimeRequestKind::ResolveRecovery),
+        ("evaluate-reentry", RuntimeRequestKind::EvaluateReentry),
+    ] {
+        fixture
+            .owner
+            .prepare_request(intent(id, kind), 1)
+            .await
+            .unwrap();
+        let permit = fixture.owner.mark_request_sent(id, 2).await.unwrap();
+        for (session_id, turn_id) in [("foreign", None), ("native", Some("worker-turn"))] {
+            assert!(
+                fixture
+                    .owner
+                    .record_request_ack(
+                        &permit,
+                        RuntimeRequestAck::Accepted {
+                            session_id: session_id.into(),
+                            turn_id: turn_id.map(str::to_owned),
+                            last_sequence: Some(4),
+                        },
+                        3
+                    )
+                    .await
+                    .is_err()
+            );
+        }
+        let ack = RuntimeRequestAck::Accepted {
+            session_id: "native".into(),
+            turn_id: None,
+            last_sequence: Some(4),
+        };
+        fixture
+            .owner
+            .record_request_ack(&permit, ack.clone(), 3)
+            .await
+            .unwrap();
+        let receipt = fixture.owner.request_receipt(id).await.unwrap().unwrap();
+        assert_eq!(receipt.kind, kind);
+        assert_eq!(receipt.ack, Some(ack));
+        assert_eq!(
+            fixture.stream.cursor().await.unwrap().sequence,
+            0,
+            "an ACK cannot advance durable event history"
+        );
+    }
+}
+
+#[tokio::test]
+async fn resume_ack_requires_exact_conversation_and_opens_a_new_zero_cursor() {
+    let fixture = Fixture::new().await;
+    let intent = RuntimeRequestIntent {
+        request_id: "resume",
+        kind: RuntimeRequestKind::ResumeSession,
+        target_session_id: Some("retained"),
+        expected_turn_id: None,
+    };
+    fixture.owner.prepare_request(intent, 1).await.unwrap();
+    assert!(fixture.owner.stream("retained").await.unwrap().is_none());
+    let permit = fixture.owner.mark_request_sent("resume", 2).await.unwrap();
+    for (session_id, turn_id) in [("wrong", None), ("retained", Some("old-turn"))] {
+        assert!(
+            fixture
+                .owner
+                .record_request_ack(
+                    &permit,
+                    RuntimeRequestAck::Accepted {
+                        session_id: session_id.into(),
+                        turn_id: turn_id.map(str::to_owned),
+                        last_sequence: Some(4),
+                    },
+                    3
+                )
+                .await
+                .is_err()
+        );
+    }
+    assert!(fixture.owner.stream("wrong").await.unwrap().is_none());
+    assert!(fixture.owner.stream("retained").await.unwrap().is_none());
+    fixture
+        .owner
+        .record_request_ack(
+            &permit,
+            RuntimeRequestAck::Accepted {
+                session_id: "retained".into(),
+                turn_id: None,
+                last_sequence: Some(4),
+            },
+            3,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        fixture
+            .owner
+            .stream("retained")
+            .await
+            .unwrap()
+            .unwrap()
+            .cursor()
+            .await
+            .unwrap()
+            .sequence,
+        0
+    );
+    assert_eq!(
+        fixture
+            .owner
+            .request_receipt("resume")
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        RuntimeRequestStatus::Accepted
+    );
+}
+
+#[tokio::test]
+async fn guarded_prompt_receipt_requires_an_owned_admitted_turn_and_never_queues() {
+    let fixture = Fixture::new().await;
+    fixture
+        .owner
+        .prepare_input_request(
+            intent("guard", RuntimeRequestKind::GuardedPrompt),
+            1,
+            history("guard-attempt"),
+        )
+        .await
+        .unwrap();
+    let permit = fixture.owner.mark_request_sent("guard", 2).await.unwrap();
+    for ack in [
+        RuntimeRequestAck::Accepted {
+            session_id: "native".into(),
+            turn_id: None,
+            last_sequence: Some(2),
+        },
+        accepted("foreign"),
+        RuntimeRequestAck::Queued {
+            session_id: "native".into(),
+        },
+    ] {
+        assert!(
+            fixture
+                .owner
+                .record_request_ack(&permit, ack, 3)
+                .await
+                .is_err()
+        );
+    }
+    fixture
+        .owner
+        .record_request_ack(&permit, accepted("native"), 3)
+        .await
+        .unwrap();
+    fixture.owner.close(4).await.unwrap();
+    let receipt = fixture
+        .owner
+        .request_receipt("guard")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(receipt.kind, RuntimeRequestKind::GuardedPrompt);
+    assert_eq!(receipt.status, RuntimeRequestStatus::Accepted);
+    assert_eq!(receipt.ack, Some(accepted("native")));
+    assert_eq!(fixture.history_count().await, 1);
+}
+
+#[tokio::test]
 async fn source_receipts_require_owned_session_ack_without_turn_or_queue() {
     let fixture = Fixture::new().await;
     for (id, kind) in [
         ("prompt-source", RuntimeRequestKind::PromptSource),
         ("skill-source", RuntimeRequestKind::SkillSource),
+        ("mcp-source", RuntimeRequestKind::McpSource),
     ] {
         fixture
             .owner

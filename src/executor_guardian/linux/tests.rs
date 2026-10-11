@@ -141,6 +141,55 @@ async fn guardian_recovery_witness_descriptor_never_reaches_provider() {
     std::fs::remove_dir_all(directory).unwrap();
 }
 
+#[tokio::test]
+async fn standalone_guardian_reaps_detached_children_before_releasing_witness() {
+    let (directory, _) = recovery_fixture();
+    let owner = agenthub_db::native_sessions::NativeExecutionOwner {
+        agent_id: "standalone".into(),
+        local_session_id: "local".into(),
+        owner_id: "daemon".into(),
+        generation: 1,
+    };
+    let witness =
+        std::sync::Arc::new(CleanupWitness::prepare_standalone(&directory, &owner).unwrap());
+    let (mut command, mut channel) = prepare(
+        "/bin/sh",
+        &[
+            "-c".into(),
+            "setsid /bin/sh -c 'echo $$; exec sleep 60' & wait".into(),
+        ],
+    )
+    .unwrap();
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    channel.attach_witness(&mut command, witness);
+    let mut child = channel.spawn(command).unwrap();
+    let pid = descendant_pid(child.as_mut()).await;
+    assert!(
+        CleanupWitness::verify_standalone(&directory, &owner)
+            .unwrap()
+            .is_none()
+    );
+    let mut raw = child.into_inner();
+    wait(raw.as_mut()).await.unwrap();
+    assert_reaped(pid);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if CleanupWitness::verify_standalone(&directory, &owner)
+            .unwrap()
+            .is_some()
+        {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    CleanupWitness::retire_standalone(&directory, &owner);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
 fn guarded_shell(script: &str) -> Box<dyn ChildWrapper> {
     let (mut command, channel) = prepare("/bin/sh", &["-c".into(), script.into()]).unwrap();
     command
