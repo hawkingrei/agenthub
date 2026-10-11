@@ -379,8 +379,10 @@ provider raw JSON must stay redacted from diagnostics metadata by default.
   timeout.
 
 The compatible protocol fixture is pinned to upstream commit
-`178dfecf6599ad536f53f5f207d37d547b510a6b`. Controlled-source delivery is tracked in
-[the prerequisite PR](https://github.com/linkerdog/rara/pull/1058).
+`df7ed52b684aa175cb1f280ea306abaafedf73e2`. This locally assembled candidate includes
+the native capabilities and terminal-input prerequisite; upstream publication and applicable CI
+remain integration gates. See [candidate qualification](../journal/2026-10-07-native-runtime-qualification.md).
+Controlled-source delivery is tracked in [the prerequisite PR](https://github.com/linkerdog/rara/pull/1058).
 Package version `0.0.22` alone does not identify this protocol. The version 1 envelope
 uses `type`/`payload`; the handshake carries `runtime_id`, `runtime_version`,
 `request_methods`, family lists and explicit receipt/replay/approval lifetimes.
@@ -942,6 +944,12 @@ Phase 1 implementation validation:
 - opt-in configured-provider standalone checks for actual assistant recall after restart, approval
   callback replacement and uncertain-effect reconciliation; private explicit credentials and exact
   controlled-command approval, separately identified from installed-producer and Team qualification
+- opt-in configured-provider Team checks for task/Card semantic outcomes, controlled App/Mem
+  scope/revocation/uncertainty and a signed dispatch/report/acceptance cycle with native private
+  tasks; synthetic canonical inputs, exact allow-once command checks and isolated provider state
+- Team database/manager restart checks for retained assistant context, task memory/mailbox identity,
+  replacement approval callbacks and explicit uncertain-effect review; no automatic continuation
+  or repeated side effect, with later work carried by a new durable activation
 - provider adapter unit tests for app-server handshake and capability negotiation
 - input mapping tests for submit, follow-up, pending answer, approval, cancel, and interrupt
 - request ack tests for accepted, queued, rejected, unknown-before-ack, and idempotent retry
@@ -1009,6 +1017,8 @@ Remaining local capability acceptance:
 
 ## Source Journals
 
+- [2026-10-07: Native runtime qualification](../journal/2026-10-07-native-runtime-qualification.md)
+- [2026-10-07: Native Team provider acceptance](../journal/2026-10-07-native-team-provider-acceptance.md)
 - [2026-10-07: Standalone native continuity](../journal/2026-10-07-native-standalone-continuity.md)
 - [2026-10-07: Native resume acceptance](../journal/2026-10-07-native-resume-acceptance.md)
 

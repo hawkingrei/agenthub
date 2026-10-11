@@ -10,6 +10,8 @@ use std::sync::Mutex as StdMutex;
 
 use super::*;
 
+mod configured;
+
 struct Upstream {
     uncertain: bool,
     revoked: std::sync::atomic::AtomicBool,
@@ -46,113 +48,7 @@ async fn controlled_proxy_child() {
         owner: StdMutex::new(None),
         finish_command: StdMutex::new(String::new()),
     });
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let router = Router::new()
-        .route("/v1/chat/completions", post(model))
-        .route("/mem/mcp", post(mem))
-        .route("/mem/members/me", get(membership))
-        .route("/app/mcp", post(app))
-        .with_state(upstream.clone());
-    let server = tokio::spawn(async move {
-        axum::serve(listener, router).await.unwrap();
-    });
-    let mut fixture =
-        Fixture::new_with_mem("no-outcome", Some(&format!("http://{address}/mem/mcp"))).await;
-    let registry = AppRegistry::new(fixture.state.db.clone());
-    sqlx::query("INSERT INTO users(id, username, display_name, role, created_at) VALUES ('native-owner', 'native-owner', 'Native owner', 'admin', 1)")
-        .execute(&fixture.state.db).await.unwrap();
-    let manifest = AppManifest {
-        schema_version: 1,
-        events: vec![],
-        scopes: ["write".into()].into(),
-        tools: vec![AppTool {
-            name: "write".into(),
-            input_schema: json!({"type":"object", "properties":{"body":{"type":"string"}}, "required":["body"], "additionalProperties":false}),
-            output_schema: None,
-            required_scopes: ["write".into()].into(),
-            replay: AppReplayPolicy::NonIdempotent,
-        }],
-    };
-    let now = Utc::now().timestamp();
-    let registered = registry
-        .register(
-            RegisterApp {
-                owner_user_id: "native-owner",
-                name: "Native fixture",
-                connection: &AppConnection {
-                    endpoint: format!("http://{address}/app/mcp"),
-                    credential_env: Some("TEST_NATIVE_APP_TOKEN".into()),
-                    authority: "native-fixture".into(),
-                    namespace: "native-fixture".into(),
-                },
-                manifest: &manifest,
-            },
-            now,
-        )
-        .await
-        .unwrap();
-    registry
-        .approve_team(
-            "native-owner",
-            AppGrantUpdate {
-                app_id: &registered.id,
-                team_id: &fixture.team_id,
-                expected_revision: 0,
-                scopes: &manifest.scopes,
-            },
-            now,
-        )
-        .await
-        .unwrap();
-    registry
-        .bind_member(
-            AppBindingUpdate {
-                app_id: &registered.id,
-                team_id: &fixture.team_id,
-                actor_id: "worker",
-                version: 1,
-                expected_revision: 0,
-                scopes: &manifest.scopes,
-            },
-            now,
-        )
-        .await
-        .unwrap();
-    *upstream.owner.lock().unwrap() = Some((
-        fixture.state.db.clone(),
-        registered.id,
-        fixture.team_id.clone(),
-    ));
-    let control = crate::agenthub_binary::resolve_agenthub_binary_path().unwrap();
-    let finish = fixture.directory.join("native-finish.json");
-    std::fs::write(&finish, r#"{"kind":"no_actionable_work"}"#).unwrap();
-    let quote =
-        |path: &std::path::Path| format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"));
-    *upstream.finish_command.lock().unwrap() = format!(
-        "{} actor loop-finish --outcome-file {} --json",
-        quote(&control),
-        quote(&finish)
-    );
-    let native_state = fixture.directory.join("native-state");
-    std::fs::create_dir(&native_state).unwrap();
-    std::fs::write(native_state.join("config.json"), json!({"provider":"deepseek", "api_key":"fixture-key", "model":"fixture-model", "base_url":format!("http://{address}/v1")}).to_string()).unwrap();
-    std::fs::write(
-        fixture.directory.join("native-settings.json"),
-        json!({"binary":std::env::var("AGENTHUB_RARA_TEST_BINARY").unwrap()}).to_string(),
-    )
-    .unwrap();
-    let wrapper = fixture.directory.join("native-runtime");
-    let script = WRAPPER.replace("os.execv(", "(root / 'native-environment.json').write_text(json.dumps([key for key in os.environ if key in ['TEST_NATIVE_APP_TOKEN', 'TEST_MEM_UPSTREAM_KEY', 'TEST_OTHER_MEM_KEY', 'NMEM_API_KEY', 'NMEM_API_URL', 'NOWLEDGE_MEM_HEADERS', 'MCP_HTTP_HEADERS']]))\nos.execv(");
-    std::fs::write(&wrapper, script).unwrap();
-    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o700)).unwrap();
-    let mut config = (*fixture.state.agents.loop_app_config).clone();
-    config.rara = Some(agenthub_config::RaraConfig {
-        binary: Some(wrapper.to_string_lossy().into_owned()),
-        ..Default::default()
-    });
-    fixture.state.agents = Arc::new((*fixture.state.agents).clone().with_loop_app_config(config));
-    sqlx::query("UPDATE agents SET command = 'rara', args = '[]', runtime_model = 'fixture-model' WHERE id = 'worker'").execute(&fixture.state.db).await.unwrap();
+    let (fixture, server) = proxy_fixture(upstream.clone()).await;
     let reservation = fixture.admit("native-proxy").await;
     let activation_id = reservation.activation_id.clone().unwrap();
     // Finish the borrowed execution future before retiring the fixture.
@@ -283,6 +179,117 @@ async fn controlled_proxy_child() {
     server.abort();
 }
 
+async fn proxy_fixture(upstream: Arc<Upstream>) -> (Fixture, tokio::task::JoinHandle<()>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let router = Router::new()
+        .route("/v1/chat/completions", post(model))
+        .route("/mem/mcp", post(mem))
+        .route("/mem/members/me", get(membership))
+        .route("/app/mcp", post(app))
+        .with_state(upstream.clone());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let mut fixture =
+        Fixture::new_with_mem("no-outcome", Some(&format!("http://{address}/mem/mcp"))).await;
+    let registry = AppRegistry::new(fixture.state.db.clone());
+    sqlx::query("INSERT INTO users(id, username, display_name, role, created_at) VALUES ('native-owner', 'native-owner', 'Native owner', 'admin', 1)")
+        .execute(&fixture.state.db).await.unwrap();
+    let manifest = AppManifest {
+        schema_version: 1,
+        events: vec![],
+        scopes: ["write".into()].into(),
+        tools: vec![AppTool {
+            name: "write".into(),
+            input_schema: json!({"type":"object", "properties":{"body":{"type":"string"}}, "required":["body"], "additionalProperties":false}),
+            output_schema: None,
+            required_scopes: ["write".into()].into(),
+            replay: AppReplayPolicy::NonIdempotent,
+        }],
+    };
+    let now = Utc::now().timestamp();
+    let registered = registry
+        .register(
+            RegisterApp {
+                owner_user_id: "native-owner",
+                name: "Native fixture",
+                connection: &AppConnection {
+                    endpoint: format!("http://{address}/app/mcp"),
+                    credential_env: Some("TEST_NATIVE_APP_TOKEN".into()),
+                    authority: "native-fixture".into(),
+                    namespace: "native-fixture".into(),
+                },
+                manifest: &manifest,
+            },
+            now,
+        )
+        .await
+        .unwrap();
+    registry
+        .approve_team(
+            "native-owner",
+            AppGrantUpdate {
+                app_id: &registered.id,
+                team_id: &fixture.team_id,
+                expected_revision: 0,
+                scopes: &manifest.scopes,
+            },
+            now,
+        )
+        .await
+        .unwrap();
+    registry
+        .bind_member(
+            AppBindingUpdate {
+                app_id: &registered.id,
+                team_id: &fixture.team_id,
+                actor_id: "worker",
+                version: 1,
+                expected_revision: 0,
+                scopes: &manifest.scopes,
+            },
+            now,
+        )
+        .await
+        .unwrap();
+    *upstream.owner.lock().unwrap() = Some((
+        fixture.state.db.clone(),
+        registered.id,
+        fixture.team_id.clone(),
+    ));
+    let control = crate::agenthub_binary::resolve_agenthub_binary_path().unwrap();
+    let finish = fixture.directory.join("native-finish.json");
+    std::fs::write(&finish, r#"{"kind":"no_actionable_work"}"#).unwrap();
+    let quote =
+        |path: &std::path::Path| format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"));
+    *upstream.finish_command.lock().unwrap() = format!(
+        "{} actor loop-finish --outcome-file {} --json",
+        quote(&control),
+        quote(&finish)
+    );
+    let native_state = fixture.directory.join("native-state");
+    std::fs::create_dir(&native_state).unwrap();
+    std::fs::write(native_state.join("config.json"), json!({"provider":"deepseek", "api_key":"fixture-key", "model":"fixture-model", "base_url":format!("http://{address}/v1")}).to_string()).unwrap();
+    std::fs::write(
+        fixture.directory.join("native-settings.json"),
+        json!({"binary":std::env::var("AGENTHUB_RARA_TEST_BINARY").unwrap()}).to_string(),
+    )
+    .unwrap();
+    let wrapper = fixture.directory.join("native-runtime");
+    let script = WRAPPER.replace("os.execv(", "(root / 'native-environment.json').write_text(json.dumps([key for key in os.environ if key in ['TEST_NATIVE_APP_TOKEN', 'TEST_MEM_UPSTREAM_KEY', 'TEST_OTHER_MEM_KEY', 'NMEM_API_KEY', 'NMEM_API_URL', 'NOWLEDGE_MEM_HEADERS', 'MCP_HTTP_HEADERS']]))\nos.execv(");
+    std::fs::write(&wrapper, script).unwrap();
+    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut config = (*fixture.state.agents.loop_app_config).clone();
+    config.rara = Some(agenthub_config::RaraConfig {
+        binary: Some(wrapper.to_string_lossy().into_owned()),
+        ..Default::default()
+    });
+    fixture.state.agents = Arc::new((*fixture.state.agents).clone().with_loop_app_config(config));
+    sqlx::query("UPDATE agents SET command = 'rara', args = '[]', runtime_model = 'fixture-model' WHERE id = 'worker'").execute(&fixture.state.db).await.unwrap();
+    (fixture, server)
+}
+
 async fn membership(headers: HeaderMap) -> Json<Value> {
     assert_eq!(headers["authorization"], "Bearer configured-secret");
     Json(
@@ -326,6 +333,16 @@ async fn exchange(state: Arc<Upstream>, request: Value, app: bool) -> Response {
         "tools/call" => {
             state.calls.lock().unwrap().push(request.clone());
             if app {
+                if !state
+                    .revoked
+                    .swap(true, std::sync::atomic::Ordering::SeqCst)
+                {
+                    let (db, app, team) = state.owner.lock().unwrap().clone().unwrap();
+                    AppRegistry::new(db)
+                        .revoke_team_grant(&app, &team, 1, Utc::now().timestamp())
+                        .await
+                        .unwrap();
+                }
                 if state.uncertain {
                     // The upstream applied this write but did not supply an MCP result.
                     return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -355,17 +372,6 @@ async fn model(
     state.requests.lock().unwrap().push(request.clone());
     if let Some(response) = super::semantic_guard::compatible_response(&request) {
         return response;
-    }
-    if completed(&request, "app")
-        && !state
-            .revoked
-            .swap(true, std::sync::atomic::Ordering::SeqCst)
-    {
-        let (db, app, team) = state.owner.lock().unwrap().clone().unwrap();
-        AppRegistry::new(db)
-            .revoke_team_grant(&app, &team, 1, Utc::now().timestamp())
-            .await
-            .unwrap();
     }
     let controlled = |description: &str| {
         request["tools"]
