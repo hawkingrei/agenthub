@@ -29,11 +29,13 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-10-05: Native capability rollout](2026-10-05-native-capability-rollout.md): reopen controlled tool sources, semantic outcomes, cross-process continuity, durable approval recovery and assembled acceptance after the existing integration merged.
+
 - [2026-10-03: Mailbox ACK writer contention](2026-10-03-mailbox-ack-writer-contention.md): acquire write ownership before the ACK read snapshot and retain idempotency under concurrent WAL writers.
 
 - [2026-09-27: Revoked execution sources](2026-09-27-loop-revoked-execution-sources.md): exclude revoked sources from live execution pages and exact-source reads while preserving history and stable pagination.
 
-- [2026-09-21: ACP rollout integration](2026-09-21-acp-rollout-integration.md): PR #1169 merged the ACP slices, verified restart recovery, installed-adapter acceptance and operator guidance after applicable CI passed. Native support remains deferred.
+- [2026-09-21: ACP rollout integration](2026-09-21-acp-rollout-integration.md): PR #1169 merged the ACP slices, verified restart recovery, installed-adapter acceptance and operator guidance after applicable CI passed. The native scope deferred at that checkpoint was reopened on 2026-10-05.
 
 - [2026-09-18: Direct runtime loop activation](2026-09-18-native-loop-activation.md): typed source controls, pinned task context, retained traces and fresh leader/worker activation evidence; tool sources, semantic outcomes and approval persistence remain open.
 - [2026-09-18: Direct runtime event storage](2026-09-18-runtime-event-storage.md): atomic history/deduplication/cursors, control receipts, typed projection, managed replay and fenced live input/permissions.
