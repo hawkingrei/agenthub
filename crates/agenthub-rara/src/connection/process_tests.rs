@@ -68,6 +68,13 @@ async fn native_process_transport_round_trip() {
     .await
     .unwrap();
     let runtime_id = connection.client.handshake().runtime_id.clone();
+    for method in [
+        "mcp_source.register",
+        "mcp_source.unregister",
+        "mcp_source.query",
+    ] {
+        assert!(!connection.client.handshake().supports(method));
+    }
     assert!(connection.client.handshake().supports("session.resume"));
     assert!(
         connection

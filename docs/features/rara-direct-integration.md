@@ -379,8 +379,9 @@ provider raw JSON must stay redacted from diagnostics metadata by default.
   timeout.
 
 The compatible protocol fixture is pinned to upstream commit
-`df7ed52b684aa175cb1f280ea306abaafedf73e2`. This locally assembled candidate includes
-the native capabilities and terminal-input prerequisite; upstream publication and applicable CI
+`b38b32b839b67a75323d92c3eaff2691eec8fa46`. This locally assembled candidate includes
+the native capabilities, terminal-input prerequisite and explicit controlled-source launch opt-in;
+the captured fixture enables that opt-in. Upstream publication and applicable CI
 remain integration gates. See [candidate qualification](../journal/2026-10-07-native-runtime-qualification.md).
 Controlled-source delivery is tracked in [the prerequisite PR](https://github.com/linkerdog/rara/pull/1058).
 Package version `0.0.22` alone does not identify this protocol. The version 1 envelope
@@ -456,8 +457,15 @@ in the same native session. Source limits are checked before sending the first r
 
 Configured MCP sources additionally require `mcp_source.register`,
 `mcp_source.unregister`, `mcp_source.query` and the `mcp` event family before
-session creation. Only the existing authorized local proxy descriptors are
-registered: the executable, server identity, arguments and renewable activation
+session creation. The supervisor adds `--allow-controlled-mcp-sources` only after
+resolving at least one authorized App or Mem proxy source, and includes the effective
+arguments in the configuration digest. Unbound and standalone launches do not opt in.
+Bound launches require a runtime that recognizes this option; unbound launches retain
+compatibility with earlier runtimes that satisfy their remaining capability requirements.
+The runtime defaults to disabled source controls; general permission bypass does not
+enable them. This launch option trusts the supervisor to authorize subprocess commands
+and environments; it is not a per-command sandbox policy. Only the existing authorized
+local proxy descriptors are registered: the executable, server identity, arguments and renewable activation
 credential-file reference. Upstream endpoints, headers and credentials remain in
 the daemon. Source registration uses the same durable receipt and ordered event
 barrier as prompts and skills. The pinned upstream connection explicitly uses MCP

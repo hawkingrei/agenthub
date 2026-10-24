@@ -35,7 +35,8 @@ Combined producer and protocol identity: [native runtime qualification](journal/
 - [ ] Add capability-negotiated, session-scoped MCP sources through the existing journaled proxy,
   including App and Mem bindings, revocation, credential isolation and uncertain-write handling.
   Implementation and deterministic actual-process qualification are complete; upstream publication
-  and applicable CI remain delivery gates. See the rollout checkpoint above.
+  and applicable CI remain delivery gates. The launch-policy review correction adds explicit
+  operator opt-in; its refreshed candidate qualification is tracked in the rollout checkpoint above.
 - [ ] Map semantic guard outcomes into canonical loop outcomes and clarification waits without
   treating an ordinary completed provider turn as a structured finish.
   Implementation now composes the existing finish, conversation and schedule transactions;
@@ -74,8 +75,9 @@ Combined producer and protocol identity: [native runtime qualification](journal/
   entrypoints pass against the assembled local candidate and a deterministic localhost model;
   external execution still requires payload/destination authorization. See
   [native Team provider acceptance](journal/2026-10-07-native-team-provider-acceptance.md).
-  The installed `0.0.22` handshake lacks durable resume/recovery, MCP sources and approval
-  persistence; a producer update is required before that binary can pass the assembled gate.
+  The previously installed `0.0.22` handshake lacked durable resume/recovery, MCP sources and approval
+  persistence. Its configured executable path is absent as of October 24; installed-runtime
+  qualification requires a new installation and remains open.
 - [x] Add explicit navigation from retained loop activation records to their stopped transcript.
   Terminal records now open a separate read-only conversation drawer. Scoped paging, partial-message
   recovery, denied reads and stale-response isolation are covered; actual backend/browser checks pass

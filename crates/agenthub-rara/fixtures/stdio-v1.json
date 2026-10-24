@@ -1,6 +1,9 @@
 {
-  "upstream_commit": "df7ed52b684aa175cb1f280ea306abaafedf73e2",
-  "binary_sha256": "dc82a0c5eca3dd464faa3a2c4ec36fae1cda629b91b2b51b9fd10adc1525c283",
+  "upstream_commit": "b38b32b839b67a75323d92c3eaff2691eec8fa46",
+  "binary_sha256": "7d0808e7207180f04ac1f85887ee027eb72bfdc0793203407ec4ffb3464f0045",
+  "launch_options": [
+    "--allow-controlled-mcp-sources"
+  ],
   "frames": [
     {
       "type": "handshake",

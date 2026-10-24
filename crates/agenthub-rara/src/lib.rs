@@ -41,7 +41,7 @@ pub use source::{McpSource, SourceRegistration};
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const TRANSPORT: &str = "stdio-jsonl";
 pub const MAX_FRAME_BYTES: usize = 1_048_576;
-pub const PINNED_UPSTREAM_REVISION: &str = "df7ed52b684aa175cb1f280ea306abaafedf73e2";
+pub const PINNED_UPSTREAM_REVISION: &str = "b38b32b839b67a75323d92c3eaff2691eec8fa46";
 
 #[cfg(test)]
 mod tests;

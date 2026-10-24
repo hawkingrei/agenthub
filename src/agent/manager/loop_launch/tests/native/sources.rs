@@ -1,8 +1,6 @@
 use super::*;
 
-#[tokio::test]
-async fn native_loop_source_registration_preserves_authorized_proxy_descriptors() {
-    let fixture = fixture("no-outcome").await;
+fn advertise_sources(fixture: &Fixture) {
     let config_path = fixture.directory.join("native-fixture.json");
     let mut config: Value = serde_json::from_slice(&std::fs::read(&config_path).unwrap()).unwrap();
     let hello = &mut config["handshake"];
@@ -20,6 +18,119 @@ async fn native_loop_source_registration_preserves_authorized_proxy_descriptors(
         .unwrap()
         .push(json!("mcp"));
     std::fs::write(&config_path, serde_json::to_vec(&config).unwrap()).unwrap();
+}
+
+#[tokio::test]
+async fn native_loop_enables_source_launch_only_after_an_authorized_member_binding() {
+    use agenthub_agent_domain::app_tools::AppConnection;
+    use agenthub_db::app_registry::{AppBindingUpdate, AppGrantUpdate, AppRegistry, RegisterApp};
+
+    let fixture = with_native_provider(Fixture::new("apps").await, "finish").await;
+    advertise_sources(&fixture);
+    sqlx::query("INSERT INTO users(id, username, display_name, role, created_at) VALUES ('app-owner', 'app-owner', 'App owner', 'admin', 1)")
+        .execute(&fixture.state.db).await.unwrap();
+    let registry = AppRegistry::new(fixture.state.db.clone());
+    let now = Utc::now().timestamp();
+    let app = registry
+        .register(
+            RegisterApp {
+                owner_user_id: "app-owner",
+                name: "Launch policy fixture",
+                connection: &AppConnection {
+                    endpoint: "http://127.0.0.1:9/mcp".into(),
+                    credential_env: None,
+                    authority: "fixture".into(),
+                    namespace: "launch-policy".into(),
+                },
+                manifest: &super::super::apps::manifest(),
+            },
+            now,
+        )
+        .await
+        .unwrap();
+    let scopes = ["write".into()].into();
+    registry
+        .approve_team(
+            "app-owner",
+            AppGrantUpdate {
+                app_id: &app.id,
+                team_id: &fixture.team_id,
+                expected_revision: 0,
+                scopes: &scopes,
+            },
+            now,
+        )
+        .await
+        .unwrap();
+    let unbound = fixture.execute("source-unbound").await;
+    assert_eq!(unbound.state, LoopActivationState::Finished);
+    let arguments: Vec<String> =
+        serde_json::from_slice(&std::fs::read(fixture.directory.join("native-argv.json")).unwrap())
+            .unwrap();
+    assert!(
+        !arguments
+            .iter()
+            .any(|arg| arg == "--allow-controlled-mcp-sources")
+    );
+    let unbound_digest: String = sqlx::query_scalar(
+        "SELECT configuration_digest FROM loop_native_sessions WHERE actor_id = 'worker' AND state = 'bound'",
+    ).fetch_one(&fixture.state.db).await.unwrap();
+
+    registry
+        .bind_member(
+            AppBindingUpdate {
+                app_id: &app.id,
+                team_id: &fixture.team_id,
+                actor_id: "worker",
+                version: 1,
+                expected_revision: 0,
+                scopes: &scopes,
+            },
+            now,
+        )
+        .await
+        .unwrap();
+    let bound = fixture.execute("source-bound").await;
+    assert_eq!(bound.state, LoopActivationState::Finished);
+    let arguments: Vec<String> =
+        serde_json::from_slice(&std::fs::read(fixture.directory.join("native-argv.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        arguments
+            .iter()
+            .filter(|arg| *arg == "--allow-controlled-mcp-sources")
+            .count(),
+        1
+    );
+    let bound_digest: String = sqlx::query_scalar(
+        "SELECT configuration_digest FROM loop_native_sessions WHERE actor_id = 'worker' AND state = 'bound'",
+    ).fetch_one(&fixture.state.db).await.unwrap();
+    assert_ne!(unbound_digest, bound_digest);
+    let pins = registry
+        .activation_pins(&fixture.team_id, &bound.id)
+        .await
+        .unwrap();
+    assert_eq!(pins.len(), 1);
+    assert_eq!(pins[0].app_id, app.id);
+    let requests =
+        std::fs::read_to_string(fixture.directory.join("native-requests.jsonl")).unwrap();
+    let registrations: Vec<Value> = requests
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .filter(|request| request["payload"]["envelope"]["request"]["type"] == "mcp_source")
+        .collect();
+    assert_eq!(registrations.len(), 1);
+    assert_eq!(
+        registrations[0]["payload"]["envelope"]["request"]["payload"]["payload"]["source_id"],
+        format!("app-{}", app.id)
+    );
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn native_loop_source_registration_preserves_authorized_proxy_descriptors() {
+    let fixture = fixture("no-outcome").await;
+    advertise_sources(&fixture);
 
     let manager = &fixture.state.agents;
     let store = LoopStore::new(fixture.state.db.clone());

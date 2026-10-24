@@ -14,6 +14,7 @@ const PROVIDER: &str = r#"#!/usr/bin/env python3
 import json, pathlib, subprocess, sys, time, uuid
 root = pathlib.Path.cwd()
 config = json.loads((root / 'native-fixture.json').read_text())
+(root / 'native-argv.json').write_text(json.dumps(sys.argv[1:]))
 hello = config['handshake']
 runtime = hello['runtime_id'] = str(uuid.uuid4())
 native = str(uuid.uuid4())
@@ -211,7 +212,10 @@ for line in sys.stdin:
 "#;
 
 async fn fixture(mode: &str) -> Fixture {
-    let mut fixture = Fixture::new("no-outcome").await;
+    with_native_provider(Fixture::new("no-outcome").await, mode).await
+}
+
+async fn with_native_provider(mut fixture: Fixture, mode: &str) -> Fixture {
     let program = fixture.directory.join("native-provider");
     std::fs::write(&program, PROVIDER).unwrap();
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();

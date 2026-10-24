@@ -111,7 +111,7 @@ impl AgentManager {
         context: &AcpActorSkillContext,
         workdir: &str,
         command: &str,
-        args: &[String],
+        args: &mut Vec<String>,
     ) -> anyhow::Result<(
         AcpLoopLaunchConfig,
         LoopSessionPolicy,
@@ -241,10 +241,13 @@ impl AgentManager {
             )?;
             apps.push(app);
         }
+        if native_context.is_some() && !launch.mcp_servers().is_empty() {
+            args.push("--allow-controlled-mcp-sources".into());
+        }
         let mut digest = Sha256::new();
         digest.update(serde_json::to_vec(&(
             command,
-            args,
+            args.as_slice(),
             context,
             &agent.runtime_model,
             &agent.thinking_level,

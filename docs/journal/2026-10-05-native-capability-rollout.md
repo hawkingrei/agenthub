@@ -234,6 +234,23 @@ acceptance. Keep Bazel validation on the default configuration.
 
 ## Follow-Ups
 
+### Launch Trust Review (2026-10-24)
+
+The registry review identified an unconditional stdio launch opt-in: a peer could
+register executable MCP sources without the operator enabling that authority.
+The producer correction defaults source controls to disabled and uses one policy
+for both capability advertisement and session construction. An explicit
+`--allow-controlled-mcp-sources` launch option trusts the supervisor to authorize
+the command and environment. Permission bypass alone does not enable sources.
+
+The consumer enables the option only for resolved, authorized App/Mem proxy
+descriptors, before calculating the configuration digest. An automatic manager
+regression covers a Team grant without a member binding, then a bound activation,
+checking the actual subprocess arguments, pinned App and source registration.
+The existing descriptor regression continues to cover App and Mem transport data.
+These automatic regressions are assigned to the existing CI lanes. Exact candidate
+qualification and publication remain separate integration gates.
+
 The five open milestones in [the transition TODO](../todo.md) are the active delivery checklist.
 Complete the controlled-source protocol proof first, then publish the corresponding upstream and
 adapter changes with their evidence. The prior user deferral is no longer a blocker for this work.

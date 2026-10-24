@@ -804,7 +804,7 @@ impl AgentManager {
             self.acp_provider_spec_for_agent(&agent.command, &agent.args)
         };
         let is_acp = acp_provider.is_some();
-        let (command_path, command_args) = if let Some(config) = &rara_config {
+        let (command_path, mut command_args) = if let Some(config) = &rara_config {
             let mut launch = agenthub_rara::LaunchCommand::new(
                 config,
                 std::path::Path::new(&start_policy.workdir),
@@ -844,7 +844,7 @@ impl AgentManager {
                         context,
                         &start_policy.workdir,
                         &command_path,
-                        &command_args,
+                        &mut command_args,
                     )
                     .await?;
                 (Some(launch), Some(policy), env)

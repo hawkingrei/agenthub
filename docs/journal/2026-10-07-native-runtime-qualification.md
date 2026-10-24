@@ -75,3 +75,46 @@ Team acceptance also remains pending; localhost results do not satisfy that gate
 Contract: [direct runtime integration](../features/rara-direct-integration.md).
 Prepared acceptance: [native Team provider checks](2026-10-07-native-team-provider-acceptance.md).
 Active follow-up: [TODO](../todo.md).
+
+## Controlled Source Launch Review (2026-10-24)
+
+The blocking registry review found that stdio launches enabled executable source
+registration unconditionally. The corrected candidate is
+`b38b32b839b67a75323d92c3eaff2691eec8fa46`, extending the earlier `df7ed52b` assembly
+with default-off source controls and explicit operator opt-in. Its stripped Linux
+executable has SHA-256
+`7d0808e7207180f04ac1f85887ee027eb72bfdc0793203407ec4ffb3464f0045`.
+
+The six protocol frames were recaptured from this executable with
+`--allow-controlled-mcp-sources`; they are unchanged. The fixture now records that
+launch selection alongside the source and executable identities. Four actual-process
+localhost continuity scenarios pass: clean shutdown/resume, idle process loss/resume,
+live-owner rejection and interrupted-turn recovery without replay. The shared smoke
+client checks enabled and default-disabled capability advertisements. Producer
+formatting and the all-target warnings-denied Clippy commit hook pass.
+
+Consumer acceptance completed on October 25. The default transport round trip
+passes with all three controlled-source methods absent, while prompt/skill
+registration and semantic shutdown remain usable. The real App/Mem proxy test
+passes both normal and lost-response scenarios, including scope rejection,
+immediate revocation and durable uncertainty without replay. These checks use
+the exact candidate above and isolated localhost services.
+
+Automatic CLI, stdio and manager regressions remain assigned to their existing
+CI lanes. The CI-covered producer process smoke suite was not repeated locally.
+Commands for the CI-uncovered checks are:
+
+```sh
+python3 scripts/app_server_continuity_smoke.py /absolute/path/to/candidate
+AGENTHUB_RARA_TEST_BINARY=/absolute/path/to/candidate cargo test --locked -p agenthub-rara native_process_transport_round_trip -- --ignored --test-threads=1
+AGENTHUB_RARA_TEST_BINARY=/absolute/path/to/candidate cargo test --locked -p agenthub --lib controlled_proxy_sources_enforce_scope_revocation_and_uncertainty -- --ignored --test-threads=1
+```
+
+The former private archive and installed executable paths were absent when work
+resumed. The new private candidate is under
+`target/loop-review-validation/qualified-native/rara-controlled-source-optin`;
+raw build and qualification logs stay outside Git. Upstream publication/CI,
+installed-runtime qualification and external configured-provider Team acceptance
+remain open; the historical results above are not new acceptance evidence.
+The reused producer worktree completed default `bazel clean` and `bazel shutdown`
+and remains clean for the pending publication step.
