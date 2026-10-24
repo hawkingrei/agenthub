@@ -98,6 +98,14 @@ pub(super) async fn run_configured_child(test: &str) {
 }
 
 pub(super) async fn run_configured_child_with_env(test: &str, extra_env: &[(&str, &str)]) {
+    run_configured_child_with_timeout(test, extra_env, Duration::from_secs(45)).await;
+}
+
+pub(super) async fn run_configured_child_with_timeout(
+    test: &str,
+    extra_env: &[(&str, &str)],
+    timeout: Duration,
+) {
     let mut child = tokio::process::Command::new(std::env::current_exe().unwrap())
         .args(["--exact", test, "--ignored", "--nocapture"])
         .env("TEST_MEM_UPSTREAM_KEY", "configured-secret")
@@ -121,7 +129,7 @@ pub(super) async fn run_configured_child_with_env(test: &str, extra_env: &[(&str
         tokio::try_join!(stdout.read_to_end(&mut out), stderr.read_to_end(&mut err)).unwrap();
         (out, err)
     });
-    let status = tokio::time::timeout(Duration::from_secs(45), child.wait())
+    let status = tokio::time::timeout(timeout, child.wait())
         .await
         .unwrap()
         .unwrap();

@@ -1,9 +1,10 @@
-import { Alert, Badge, Button, Group, Paper, Stack, Text } from "@mantine/core";
+import { Alert, Badge, Button, Drawer, Group, Paper, Stack, Text } from "@mantine/core";
 import { useCallback, useState } from "react";
 import { api } from "../../api";
 import type { LoopMemberScope } from "./use_loop_configuration";
 import { useLoopPage } from "./use_loop_page";
 import { useResumeRefresh } from "./use_resume_refresh";
+import { LoopActivationTranscript } from "./loop_activation_transcript";
 import {
   loopLabel,
   loopOutcomeLabel,
@@ -53,6 +54,12 @@ export function LoopActivationHistory({
     id: string;
   } | null>(null);
   const selectedId = selected?.scope === key ? selected.id : null;
+  const [transcriptSelection, setTranscriptSelection] = useState<{
+    scope: string;
+    activationId: string;
+    sessionId: string;
+  } | null>(null);
+  const transcript = transcriptSelection?.scope === key ? transcriptSelection : null;
   const refreshHistory = history.refresh;
   const refreshSchedules = schedules.refresh;
   const refresh = useCallback(async () => {
@@ -61,7 +68,7 @@ export function LoopActivationHistory({
   const viewingOlder =
     history.state?.viewingOlder || schedules.state?.viewingOlder;
   useResumeRefresh({
-    enabled: !viewingOlder && !selectedId,
+    enabled: !viewingOlder && !selectedId && !transcript,
     intervalMs: 3000,
     pauseWhenHidden: true,
     refresh,
@@ -153,7 +160,7 @@ export function LoopActivationHistory({
             !history.state.items.length &&
             !history.state.error && <Text size="sm">No activations yet.</Text>}
           {history.state?.items.map((item) => (
-            <Paper key={item.id} withBorder p="sm">
+            <Paper key={item.id} withBorder p="sm" data-activation-id={item.id}>
               <Group justify="space-between" align="start">
                 <Stack gap={4}>
                   <Group gap="xs">
@@ -169,13 +176,28 @@ export function LoopActivationHistory({
                     </Text>
                   )}
                 </Stack>
-                <Button
-                  variant="subtle"
-                  size="xs"
-                  onClick={() => setSelected({ scope: key, id: item.id })}
-                >
-                  Inspect activation
-                </Button>
+                <Group gap="xs">
+                  {item.session_id && ["finished", "interrupted", "canceled"].includes(item.state) && (
+                    <Button
+                      variant="subtle"
+                      size="xs"
+                      onClick={() => setTranscriptSelection({
+                        scope: key,
+                        activationId: item.id,
+                        sessionId: item.session_id!,
+                      })}
+                    >
+                      View transcript
+                    </Button>
+                  )}
+                  <Button
+                    variant="subtle"
+                    size="xs"
+                    onClick={() => setSelected({ scope: key, id: item.id })}
+                  >
+                    Inspect activation
+                  </Button>
+                </Group>
               </Group>
               {selectedId === item.id && (
                 <LoopActivationDetail
@@ -204,6 +226,23 @@ export function LoopActivationHistory({
           )}
         </Stack>
       </Paper>
+      <Drawer
+        opened={Boolean(transcript)}
+        onClose={() => setTranscriptSelection(null)}
+        title="Activation transcript"
+        position="right"
+        size="xl"
+        closeButtonProps={{ "aria-label": "Close transcript" }}
+      >
+        {transcript && (
+          <LoopActivationTranscript
+            key={`${key}:${transcript.activationId}:${transcript.sessionId}`}
+            scope={scope}
+            activationId={transcript.activationId}
+            sessionId={transcript.sessionId}
+          />
+        )}
+      </Drawer>
     </Stack>
   );
 }

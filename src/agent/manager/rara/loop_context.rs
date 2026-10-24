@@ -12,6 +12,7 @@ pub(in crate::agent::manager) struct NativeLoopContext {
     pub name: String,
     pub card: TeamMemberCardRecord,
     pub tasks: Vec<LoopTaskContext>,
+    pub source_ids: Vec<String>,
 }
 
 impl NativeLoopContext {
@@ -23,6 +24,7 @@ impl NativeLoopContext {
     ) -> anyhow::Result<Self> {
         let card = TeamManager::member_card_for_launch(spec, agent)?;
         let mut task_ids = BTreeSet::new();
+        let mut source_ids = Vec::new();
         let mut after = None;
         loop {
             let page = store
@@ -34,6 +36,11 @@ impl NativeLoopContext {
                 )
                 .await?;
             for source in page.sources.into_iter().filter(|source| !source.revoked) {
+                source_ids.push(source.id);
+                anyhow::ensure!(
+                    source_ids.len() <= 256,
+                    "native guard work source capacity exceeded"
+                );
                 if let Some(task) = source.input.references.task_id {
                     task_ids.insert(task);
                 }
@@ -60,6 +67,7 @@ impl NativeLoopContext {
             name: agent.name.clone(),
             card,
             tasks,
+            source_ids,
         })
     }
 }

@@ -15,7 +15,7 @@ use super::*;
 mod provider;
 pub(super) const PROVIDER: &str = provider::SCRIPT;
 
-fn manifest() -> AppManifest {
+pub(super) fn manifest() -> AppManifest {
     AppManifest {
         schema_version: 1,
         events: vec![],

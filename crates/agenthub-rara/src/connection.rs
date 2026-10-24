@@ -285,10 +285,15 @@ fn method(frame: &ClientFrame) -> Result<&'static str, ConnectionError> {
     let operation = envelope.request["payload"]["type"].as_str();
     match (family, operation) {
         (Some("session"), Some("create_session")) => Ok("session.create"),
+        (Some("session"), Some("resume_session")) => Ok("session.resume"),
         (Some("session"), Some("query_runtime_state")) => Ok("session.query_state"),
+        (Some("session"), Some("query_recovery")) => Ok("session.query_recovery"),
+        (Some("session"), Some("resolve_recovery")) => Ok("session.resolve_recovery"),
+        (Some("session"), Some("evaluate_reentry")) => Ok("session.evaluate_reentry"),
         (Some("session"), Some("cancel_current_turn")) => Ok("session.cancel"),
         (Some("session"), Some("interrupt_current_turn")) => Ok("session.interrupt"),
         (Some("input"), Some("submit_user_prompt")) => Ok("input.submit_prompt"),
+        (Some("input"), Some("submit_guarded_prompt")) => Ok("input.submit_guarded_prompt"),
         (Some("input"), Some("submit_follow_up")) => Ok("input.submit_follow_up"),
         (Some("input"), Some("answer_pending_input")) => Ok("input.answer_user"),
         (Some("input"), Some("answer_plan_approval")) => Ok("input.answer_plan"),
@@ -299,6 +304,9 @@ fn method(frame: &ClientFrame) -> Result<&'static str, ConnectionError> {
         (Some("skill_source"), Some("register_skill")) => Ok("skill_source.register"),
         (Some("skill_source"), Some("disable_skill")) => Ok("skill_source.disable"),
         (Some("skill_source"), Some("query_skills")) => Ok("skill_source.query"),
+        (Some("mcp_source"), Some("register")) => Ok("mcp_source.register"),
+        (Some("mcp_source"), Some("unregister")) => Ok("mcp_source.unregister"),
+        (Some("mcp_source"), Some("query_sources")) => Ok("mcp_source.query"),
         _ => Err(ConnectionError::UnsupportedMethod),
     }
 }

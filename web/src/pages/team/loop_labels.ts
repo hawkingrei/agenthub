@@ -39,6 +39,12 @@ const blockers: Record<string, string> = {
     "Stop the existing process before enabling durable execution.",
   resume_capability_is_negotiated_before_entry:
     "Resume support is checked when the provider starts.",
+  native_resume_capabilities_negotiated_before_entry:
+    "Resume and recovery support are checked when the runtime starts.",
+  native_sources_negotiated_before_entry:
+    "Required tools and context are checked when the runtime starts.",
+  native_permissions_require_current_owner:
+    "Approval replies apply only to the current running session.",
 };
 export function loopPreflightMessages(
   configuration: LoopConfiguration,

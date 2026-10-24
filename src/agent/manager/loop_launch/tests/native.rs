@@ -3,16 +3,25 @@ use serde_json::{Value, json};
 use super::*;
 
 mod input;
+mod opening;
+mod recovery;
+mod resume;
+mod semantic_guard;
+mod sources;
 mod transport;
 
 const PROVIDER: &str = r#"#!/usr/bin/env python3
 import json, pathlib, subprocess, sys, time, uuid
 root = pathlib.Path.cwd()
 config = json.loads((root / 'native-fixture.json').read_text())
+(root / 'native-argv.json').write_text(json.dumps(sys.argv[1:]))
 hello = config['handshake']
 runtime = hello['runtime_id'] = str(uuid.uuid4())
 native = str(uuid.uuid4())
 sequence = 0
+waiting = None
+blocked = None
+resolution = None
 def emit(kind, payload):
     print(json.dumps({'type': kind, 'payload': payload}), flush=True)
 def event(family, kind, payload, turn=None):
@@ -23,11 +32,13 @@ def event(family, kind, payload, turn=None):
         operation['payload'] = payload
     emit('event', {'runtime_id':runtime, 'session_id':native, 'event':{
         'event_id':'event-' + str(sequence), 'sequence':sequence, 'turn_id':turn,
-        'provenance':{'session_id':native},
+        'provenance':{'session_id':native,'controller':'runtime','trust':'trusted','authorship':'runtime'},
         'event':{'type':family, 'payload':operation}}})
 def ack(request_id, turn=None):
     emit('ack', {'runtime_id':runtime, 'request_id':request_id, 'result':{
         'status':'accepted', 'session_id':native, 'turn_id':turn, 'last_sequence':sequence}})
+def recovery_state():
+    return {'waiting_turn_id':waiting, 'blocked':blocked, 'decisions':[], 'last_resolution':resolution}
 emit('handshake', hello)
 for line in sys.stdin:
     request = json.loads(line)
@@ -52,6 +63,18 @@ for line in sys.stdin:
                 time.sleep(0.01)
         ack(rid)
         event('session', 'created', {'session_id':native})
+        if config['mode'].startswith('reentry-'):
+            if 'recovery' in config['mode']:
+                blocked = {'recovery_id':'recovery-token', 'turn_id':'lost-turn', 'reason':'process_lost'}
+                pending = None
+                phase = {'state':'recovery_required','detail':{'recovery_id':'recovery-token'}}
+            else:
+                waiting = turn = 'restored-turn'
+                pending = {'turn_id':waiting,'kind':{'type':'shell','payload':{'approval_id':'restored-shell','request':{'command':'touch restored-effect'}}}}
+                event('input', 'requested', {'pending':pending}, waiting)
+                phase = {'state':'awaiting_input','detail':{'turn_id':waiting}}
+            event('session', 'runtime_state', {'snapshot':{'session_id':native, 'phase':phase,
+                'generation':0, 'last_sequence':sequence, 'pending_input':pending}})
         if config['mode'] == 'transport-loss':
             child = subprocess.Popen(['sleep', '60'], stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
@@ -67,10 +90,94 @@ for line in sys.stdin:
     elif family == 'skill_source':
         event('skill', 'registered', {'source_id':body['source_id'], 'name':body['name']})
         ack(rid)
-    elif operation == 'submit_user_prompt':
+    elif family == 'mcp_source':
+        assert operation == 'register'
+        event('mcp', 'source_registered', {'source_id':body['source_id'], 'tool_names':[]})
+        ack(rid)
+    elif operation == 'query_recovery':
+        before = sequence
+        event('session', 'recovery_state', {'state':recovery_state()})
+        if config['mode'] == 'reentry-query-prefix':
+            emit('ack', {'runtime_id':runtime,'request_id':rid,'result':{'status':'accepted','session_id':native,'turn_id':None,'last_sequence':before}})
+        else:
+            ack(rid)
+    elif operation == 'evaluate_reentry':
+        target = {'kind':'waiting','turn_id':waiting} if waiting else {'kind':'recovery','recovery_id':blocked['recovery_id']}
+        assert body['target'] == target
+        assert body['guard']['context']['role'] == 'worker'
+        result = {'type':'decided','payload':{'decision':{'outcome':'compatible'}}}
+        if 'mismatch' in config['mode']:
+            result['payload']['decision'] = {'outcome':'mismatch','reason':'Different responsibility'}
+        elif 'clarification' in config['mode']:
+            result['payload']['decision'] = {'outcome':'needs_clarification','reason':'Missing target','question':'Which target?'}
+        origin = {'runtime_id':runtime, 'request_id':rid}
+        if 'foreign' in config['mode']:
+            origin['request_id'] = 'foreign-entry'
+        before = sequence
+        evaluation = {'evaluation':{'origin':origin,'target':target,'result':result}}
+        event('session','reentry_evaluated',evaluation)
+        if config['mode'] == 'reentry-duplicate':
+            event('session','reentry_evaluated',evaluation)
+        if config['mode'] == 'reentry-phase-changed':
+            event('input','discarded',{'waiting_turn':waiting,'reason':'cancelled'},waiting)
+            waiting = None
+        (root / 'native-entry-evaluated').write_text(native)
+        if 'hold' in config['mode']:
+            deadline = time.monotonic() + 10
+            while not (root / 'native-entry-release').exists():
+                assert time.monotonic() < deadline
+                time.sleep(0.01)
+        if config['mode'] == 'reentry-result-prefix':
+            emit('ack', {'runtime_id':runtime,'request_id':rid,'result':{'status':'accepted','session_id':native,'turn_id':None,'last_sequence':before}})
+        else:
+            ack(rid)
+    elif operation == 'resolve_recovery':
+        before = sequence
+        assert blocked and body['recovery_id'] == blocked['recovery_id']
+        assert body['note']
+        blocked = None
+        resolution = body
+        event('session','recovery_state',{'state':recovery_state()})
+        (root / 'native-resolution-recorded').write_text(native)
+        if config['mode'] == 'reentry-recovery-resolution-hold':
+            deadline = time.monotonic() + 10
+            while not (root / 'native-resolution-release').exists():
+                assert time.monotonic() < deadline
+                time.sleep(0.01)
+        if config['mode'] == 'reentry-recovery-resolution-prefix':
+            emit('ack', {'runtime_id':runtime,'request_id':rid,'result':{'status':'accepted','session_id':native,'turn_id':None,'last_sequence':before}})
+        else:
+            ack(rid)
+    elif operation == 'answer_shell_approval':
+        assert request['payload']['expected_turn_id'] == waiting == 'restored-turn'
+        turn = str(uuid.uuid4())
+        event('input','answered',{'waiting_turn':waiting},turn)
+        waiting = None
+        event('session','turn_started',None,turn)
+        ack(rid,turn)
+        event('session','turn_finished',{'reason':'completed'},turn)
+    elif operation in ['submit_user_prompt', 'submit_guarded_prompt']:
         turn = str(uuid.uuid4())
         event('session', 'turn_started', None, turn)
-        ack(rid, turn)
+        if config['mode'] not in ['guard-late-ack', 'guard-foreign-ack']:
+            ack(rid, turn)
+        if operation == 'submit_guarded_prompt':
+            assert body['context']['role'] in ['worker', 'coordinator']
+            assert json.loads(body['context']['card'])
+            assert json.loads(body['context']['work'])['sources']
+            if config['mode'] in ['guard-mismatch', 'guard-late-ack', 'guard-foreign-ack']:
+                event('semantic_guard', 'decided', {'decision':{'outcome':'mismatch','reason':'Different role'}}, turn)
+                event('session', 'turn_finished', {'reason':'completed'}, turn)
+                if config['mode'] == 'guard-late-ack':
+                    ack(rid, turn)
+                elif config['mode'] == 'guard-foreign-ack':
+                    ack(rid, 'foreign-turn')
+                continue
+            if config['mode'] == 'guard-clarification':
+                event('semantic_guard', 'decided', {'decision':{'outcome':'needs_clarification','reason':'Missing target','question':'Which target?'}}, turn)
+                event('session', 'turn_finished', {'reason':'completed'}, turn)
+                continue
+            event('semantic_guard', 'decided', {'decision':{'outcome':'compatible'}}, turn)
         if config['mode'] == 'waiting':
             event('input', 'requested', {'pending':{'turn_id':turn, 'kind':{'type':'user','payload':{'question':'Choose scope', 'options':[], 'note':None}}}}, turn)
             event('session', 'turn_finished', {'reason':'awaiting_input'}, turn)
@@ -105,12 +212,15 @@ for line in sys.stdin:
 "#;
 
 async fn fixture(mode: &str) -> Fixture {
-    let mut fixture = Fixture::new("no-outcome").await;
+    with_native_provider(Fixture::new("no-outcome").await, mode).await
+}
+
+async fn with_native_provider(mut fixture: Fixture, mode: &str) -> Fixture {
     let program = fixture.directory.join("native-provider");
     std::fs::write(&program, PROVIDER).unwrap();
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
     // The fake peer owns its capabilities; captured upstream wire data stays in the protocol crate.
-    let handshake = json!({
+    let mut handshake = json!({
         "protocol_version": agenthub_rara::PROTOCOL_VERSION,
         "runtime_version": "fixture",
         "runtime_id": "runtime-fixture",
@@ -118,13 +228,13 @@ async fn fixture(mode: &str) -> Fixture {
         "request_families": ["session", "input", "prompt_source", "skill_source", "server"],
         "request_methods": [
             "session.create", "session.query_state", "session.cancel", "session.interrupt",
-            "input.submit_prompt", "input.submit_follow_up", "input.answer_user",
+            "input.submit_prompt", "input.submit_guarded_prompt", "input.submit_follow_up", "input.answer_user",
             "input.answer_plan", "input.answer_shell", "prompt_source.register",
             "skill_source.register", "server.shutdown"
         ],
         "event_families": [
             "session", "input", "assistant", "tool", "approval", "plan", "warning", "error",
-            "prompt_source", "skill"
+            "prompt_source", "skill", "semantic_guard"
         ],
         "capabilities": {
             "graceful_shutdown": true,
@@ -133,6 +243,17 @@ async fn fixture(mode: &str) -> Fixture {
             "request_receipts": {"lifetime":"runtime", "max_requests":1024}
         }
     });
+    if mode.starts_with("reentry-") {
+        handshake["capabilities"]["approval_persistence"] = json!(true);
+        handshake["request_methods"]
+            .as_array_mut()
+            .unwrap()
+            .extend([
+                json!("session.query_recovery"),
+                json!("session.resolve_recovery"),
+                json!("session.evaluate_reentry"),
+            ]);
+    }
     serde_json::from_value::<agenthub_rara::Handshake>(handshake.clone())
         .unwrap()
         .validate()
@@ -166,7 +287,25 @@ async fn fixture(mode: &str) -> Fixture {
 async fn native_loop_fresh_follow_up_pins_one_role_entry_and_keeps_mailbox_identity() {
     let fixture = fixture("finish").await;
     let first = fixture.execute("first-native").await;
+    let first_binding: (String, String, String, i64) = sqlx::query_as(
+        "SELECT native_session_id, configuration_digest, local_session_id, generation FROM loop_native_sessions WHERE actor_id = 'worker' AND state = 'bound'",
+    ).fetch_one(&fixture.state.db).await.unwrap();
     let second = fixture.execute("second-native").await;
+    let second_binding: (String, String, String, i64) = sqlx::query_as(
+        "SELECT native_session_id, configuration_digest, local_session_id, generation FROM loop_native_sessions WHERE actor_id = 'worker' AND state = 'bound'",
+    ).fetch_one(&fixture.state.db).await.unwrap();
+    assert_ne!(
+        first_binding.0, second_binding.0,
+        "fresh policy replaces the conversation"
+    );
+    assert_eq!(
+        first_binding.1, second_binding.1,
+        "activation and credential rotation do not change conversation configuration"
+    );
+    assert_eq!(Some(&first_binding.2), first.session_id.as_ref());
+    assert_eq!(Some(&second_binding.2), second.session_id.as_ref());
+    assert_eq!(first_binding.3, first.generation);
+    assert_eq!(second_binding.3, second.generation);
     for activation in [&first, &second] {
         assert_eq!(activation.state, LoopActivationState::Finished);
         assert_eq!(activation.launch.as_ref().unwrap().provider_id, "rara");
@@ -222,7 +361,7 @@ async fn native_loop_fresh_follow_up_pins_one_role_entry_and_keeps_mailbox_ident
             .iter()
             .filter(
                 |request| request["payload"]["envelope"]["request"]["payload"]["type"]
-                    == "submit_user_prompt"
+                    == "submit_guarded_prompt"
             )
             .count(),
         2
@@ -241,7 +380,7 @@ async fn native_loop_fresh_follow_up_pins_one_role_entry_and_keeps_mailbox_ident
 }
 
 #[tokio::test]
-async fn native_loop_terminal_turn_without_finish_is_interrupted_and_resume_is_rejected() {
+async fn native_loop_terminal_turn_without_finish_is_interrupted_and_resume_is_negotiated() {
     let fixture = fixture("no-outcome").await;
     let activation = fixture.execute("missing-outcome").await;
     assert_eq!(activation.state, LoopActivationState::Interrupted);
@@ -263,12 +402,16 @@ async fn native_loop_terminal_turn_without_finish_is_interrupted_and_resume_is_r
         )
         .await
         .unwrap();
-    assert!(!preflight.ready);
-    assert!(preflight.blockers.contains(&"native_resume_unsupported"));
+    assert!(preflight.ready);
     assert!(
         preflight
             .warnings
-            .contains(&"native_permissions_require_live_runtime")
+            .contains(&"native_resume_capabilities_negotiated_before_entry")
+    );
+    assert!(
+        preflight
+            .warnings
+            .contains(&"native_permissions_require_current_owner")
     );
     fixture.close().await;
 }
@@ -338,7 +481,7 @@ async fn native_loop_rejected_source_prevents_entry_and_cleans_the_owned_executo
         .await
         .unwrap();
     let log = std::fs::read_to_string(fixture.directory.join("native-requests.jsonl")).unwrap();
-    assert!(!log.contains("submit_user_prompt"));
+    assert!(!log.contains("submit_guarded_prompt"));
     assert_eq!(log.lines().count(), 2);
     assert!(
         LoopStore::new(fixture.state.db.clone())

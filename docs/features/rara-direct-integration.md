@@ -22,10 +22,13 @@ prompt/follow-up submission, fenced user answers, live permissions and turn canc
 are integrated. Authorized receipt/cursor history remains available after exit, and startup
 retires abandoned transport ownership. Fresh local Linux loop activations are admitted through
 the shared scheduler and supervised launch/cleanup path, with prompt/skill-source capability
-checks before entry. Cross-process resume, controlled MCP/App/Mem tool sources, semantic outcome
-mapping and durable approval recovery remain deferred gates tracked in
-[the transition TODO](../todo.md). Remote placement, legacy Team sessions and legacy idle loops
-remain rejected.
+checks before entry. Controlled MCP/App/Mem sources and semantic outcome mapping are implemented
+behind negotiated capabilities. Local loop resume and durable approval recovery use current-owner
+reentry and explicit reconciliation. Local Linux standalone sessions use independent durable
+owners and explicit fresh/resume policy. Upstream publication and assembled
+configured-provider qualification remain active requirements tracked in
+[the transition TODO](../todo.md).
+Remote placement, legacy Team sessions and legacy idle loops remain rejected.
 
 The broader integration contract covers:
 
@@ -52,19 +55,20 @@ The broader integration contract covers:
 
 Rara direct integration participates in the [agent loop runtime](agent-loop-runtime.md) as one
 provider adapter behind the shared scheduler. Fresh local Linux activations use the shared
-reservation, launch, structured finish and supervised cleanup lifecycle. The deferred capability
-contracts below do not enable resume, controlled tool sources or durable approval recovery.
+reservation, launch, structured finish and supervised cleanup lifecycle. Resume requires the full
+durable-interaction capability set before opening a conversation; controlled tool sources require
+their negotiated source methods independently.
 
 - One admitted activation delivers one configured role prompt through `SubmitUserPrompt`, or
   `SubmitFollowUp` when the adapter reports a reusable live turn. Rara-internal reasoning and tool
   rounds stay inside that activation.
 - Activation identity is AgentHub-owned and distinct from both `agent_sessions.id` and Rara
-  thread/session continuity. Resuming provider continuity in a later activation remains deferred;
-  losing it must not lose canonical task, IM, or outcome state.
+  thread/session continuity. Resuming provider continuity in a later activation remains to be
+  implemented; losing it must not lose canonical task, IM, or outcome state.
 - Handshake capabilities gate lifecycle claims. The scheduler must not record a durable wait for a
   Rara approval unless the handshake advertises approval persistence across process exit;
   otherwise Rara approvals keep the live-callback semantics of the runtime approval contract.
-- Semantic guard translation remains a deferred contract: `mismatch` must record a
+- Semantic guard translation is an active remaining requirement: `mismatch` must record a
   no-actionable-work outcome with the guard's safe reason, and `needs_clarification` must record
   a wait on the clarification reply. Neither is a crash, a cancellation, or a permission denial.
 - A nested Rara subteam executes inside the outer member's activation. Internal subagents do not
@@ -188,8 +192,127 @@ AgentHub and Rara session identities must stay separate:
 - `agent_sessions.id` is AgentHub's per-launch runtime/audit identifier.
 - AgentHub persistent provider continuity should store Rara's thread/session identity separately.
 - Rara's thread id must not replace AgentHub's agent id, actor id, Team member id, or session id.
-- Force-new-session semantics clear Rara continuity intentionally; ordinary AgentHub restart should
-  attempt to resume the stored Rara continuity id when the adapter reports it is reusable.
+- Force-new-session semantics clear Rara continuity intentionally. A launch configured for resume
+  uses the stored native identity only when its ownership and compatibility checks pass.
+
+Loop continuity uses a separate durable binding, scoped by actor and Team. Its configuration
+digest includes the canonical workspace, role/Card, prompt and tool configuration, native
+launch configuration and negotiated provider/model. Activation ids, mailbox runs, current
+tasks, temporary credential paths and event cursors are not conversation identity. The native
+checkpoint independently checks its effective provider profile before accepting resume.
+
+Opening a conversation records intent under the current live, guarded execution reservation,
+after binding the local launch. Replacing the previous binding requires a durable
+`cleanup_verified` event for its exact activation and generation. Lease expiry, process status
+and an ended local session are insufficient. The accepted create/resume receipt establishes a
+new runtime event stream before the native identity is committed to the binding. Late completion
+from an expired or replaced reservation cannot update it. A resume receipt must return the exact
+requested native identity; event sequences always start in the new runtime incarnation.
+
+Resume with no previous binding creates the first conversation. Resume with a known binding
+requires matching configuration and a completed opening; missing, corrupt, incompatible or
+uncertain continuity fails without fresh fallback. The receipt-to-binding crash window can be
+reconciled from exactly one accepted create/resume receipt in the previous local launch's
+closed event owner. The receipt must own one matching stream; resume must name the stored
+conversation. The current guarded reservation and the old activation/generation's verified
+cleanup are checked again in the binding transaction. The repair records a
+`native_opening_reconciled` trace event and never contacts the old process or sends input.
+Missing, uncommitted, ambiguous or inconsistent opening evidence remains blocked. Checkpoint
+directory discovery cannot substitute for the exact local launch association.
+Explicit fresh policy can replace an unresolved opening only after verified cleanup. Conversation
+history grants no permission: each activation registers current sources and uses new credentials.
+Waiting inputs and interrupted execution must be preserved and reconciled before entry; they
+cannot be treated as idle or authorize replay of an earlier decision. Resume launch requires
+`approval_persistence` and all of `session.resume`, `session.query_recovery`,
+`session.resolve_recovery` and `session.evaluate_reentry` before creating an event owner or
+opening a conversation. A previously idle observation cannot narrow this requirement because
+the durable checkpoint may contain a later unresolved turn. Fresh policy keeps its existing
+capability requirements.
+
+Standalone Linux launches use `native_execution_owners`, not synthetic Team reservations.
+Every launch reserves an actor/local-session/daemon/generation identity before spawning and
+commits guarded execution authorization while holding its inherited guardian witness. Retired
+owners remain as cleanup evidence and preserve monotonic generations. A prepared, unstarted
+reservation can be retired conditionally; guarded owners require the exact exclusive witness
+proving no process started or every descendant was reaped. Closing receipts, marking a local
+session ended, elapsed time and a missing process handle are not cleanup evidence. Startup does
+not automatically restart standalone work. A later explicit launch recovers only verified owners.
+Standalone and loop reservations exclude each other atomically; active standalone ownership
+also blocks workspace/membership changes and identity deletion.
+
+`native_standalone_conversations` binds the provider identity separately. Its digest includes the
+effective canonical workspace, configured binary/provider/model and negotiated runtime profile.
+It uses the same opening-intent, exact accepted receipt and closed-owner repair requirements.
+Unknown opening results and changed configuration under resume remain blocked without fallback.
+The standalone policy defaults to `fresh`; `resume` requires the complete recovery capability set
+before any event-owner or conversation opening. Non-Linux standalone fresh compatibility remains
+available, while standalone resume requires the Linux guardian. Existing unmanaged history is
+never inferred to be a resumable binding.
+
+Restored standalone approvals are published under the new local owner; input, approval answers,
+turn controls and recovery controls revalidate that exact guarded owner and standalone scope.
+They carry no Team identity or execution credential. Recovery confirmation leaves the session idle
+for a new explicit instruction. `POST /api/agents/{id}/acp/session/clear` selects the native provider
+when omitted for a native agent, requires `RuntimeOperate`, and rejects an unretired writer with a
+conflict. It clears only the conversation binding after verified cleanup, preserves generation and
+history, and never implicitly stops a live process. Explicit actor deletion follows existing history
+deletion semantics after retirement; conversation reset alone cannot erase cleanup obligations.
+
+Restored interaction entry must register current sources before accepting an answer.
+The tool-free `session.evaluate_reentry` control targets the exact waiting turn or
+recovery token with current role/work context. Its server-owned runtime/request origin,
+target and advisory result must match the durable request receipt and committed event
+prefix before any callback becomes actionable. The control cannot consume a wait,
+resolve uncertain effects or admit worker execution. Declines use the existing canonical
+semantic finish while shutdown preserves unresolved native state. Every later answer
+must still pass current activation, generation, membership and lease checks.
+Shared permission publication holds the response-delivery lock until its durable row,
+session status and live callback are ready. An immediate review waits for registration
+before delivering its answer.
+
+Interrupted recovery remains blocked until an operator supplies a bounded reconciliation
+note for the exact current token after old executor/child retirement and effect inspection.
+A compatible entry verdict is not reconciliation. Applying the resolution must commit its
+receipt and recovery-state prefix. For a loop session, it then commits a fenced `waiting`
+outcome with the `input` wait reason and no automatic continuation. The supervisor retires
+the executor before another durable trigger can start a new activation. This completes the
+recovery activation, not its business task. Standalone sessions remain idle for an explicit
+new prompt. Previous input and approvals are never replayed automatically.
+
+The authenticated `GET /api/agents/{id}/runtime/recovery?local_session_id=...`
+endpoint requires `RuntimeOperate` and the exact current local launch. It queries
+the native owner and waits for the matching durable event prefix before returning
+local/runtime/native identities and typed recovery status. A running turn, pending
+entry or stale owner returns a conflict. Queries grant no execution authority.
+Later idle inputs also refresh durable recovery state when the provider supports
+it: a terminal or cancellation event alone cannot prove that a new prompt is safe.
+
+The authenticated `POST /api/agents/{id}/runtime/recovery` endpoint requires
+`RuntimeOperate`, the current `local_session_id`, a `target` containing current
+`runtime_id`, native `session_id` and `recovery_id`, and a nonempty single-line
+`note` of at most 4096 UTF-8 bytes. Pending entry, stale ownership and an unconfirmed
+resolution return a conflict. The daemon owns admitted reconciliation through caller
+disconnects. An identical confirmed resolution is idempotent while its owner remains
+authorized; a finalizing or retired loop owner returns a conflict. The resolution never
+sends a new prompt. Later loop work must enter through durable work intake, not direct
+input to the recovered activation.
+
+Standalone and Team member threads share a browser recovery panel for active native
+sessions with runtime-operation authority (root, admin or operator). `Review recovery`
+reads the current local owner explicitly; conversation
+history never supplies an actionable recovery token. The panel requires a nonempty
+bounded single-line note and preserves the queried runtime, native session and token
+in its confirmation request. Switching authentication, actor or local session resets
+the panel and ignores old responses. Failed confirmation discards the actionable state
+and requires another explicit query before retrying. Successful confirmation leaves
+the composer untouched and never sends input. Queries are user-triggered, not polled;
+ordinary questions and approvals remain in their existing conversation cards.
+
+Native loop input and approval admission hold the existing operation guard and verify
+the current activation, generation, local session, membership and lease after the
+input queue/event barrier. Cleanup cannot release that execution owner while an
+admitted control is settling. Historical decisions are bounded conversation evidence,
+not telemetry or a grant of current input authority.
 
 ### 6) Event Translation
 
@@ -256,13 +379,18 @@ provider raw JSON must stay redacted from diagnostics metadata by default.
   timeout.
 
 The compatible protocol fixture is pinned to upstream commit
-`6f489462251b73e1695bb22a59d2ece59ba26a21` in
-[the independently validated prerequisite PR](https://github.com/linkerdog/rara/pull/885).
+`9b250427c277ede950f128926c169be1a56a80f9`. This locally assembled candidate includes
+the native capabilities, terminal-input prerequisite and explicit controlled-source launch opt-in;
+the captured fixture enables that opt-in. Upstream publication and applicable CI
+remain integration gates. See [candidate qualification](../journal/2026-10-07-native-runtime-qualification.md).
+Controlled-source delivery is tracked in [the prerequisite PR](https://github.com/linkerdog/rara/pull/1058).
 Package version `0.0.22` alone does not identify this protocol. The version 1 envelope
 uses `type`/`payload`; the handshake carries `runtime_id`, `runtime_version`,
 `request_methods`, family lists and explicit receipt/replay/approval lifetimes.
-The tested build advertises runtime-only receipts and replay, and no persistent
-approvals or session resume. Missing required capabilities fail startup visibly.
+The tested Unix build advertises runtime-only general receipts and replay, durable
+approval decisions, session resume and explicit recovery/reentry controls. Native
+capabilities do not establish outer scope, cleanup or UI recovery by themselves.
+Missing required capabilities fail startup visibly.
 
 Frames contain at most 1,048,576 UTF-8 payload bytes, excluding LF or CRLF delimiters.
 Blank, partial-EOF, malformed and oversized frames fail the transport. A cancelled
@@ -327,7 +455,34 @@ and its acknowledged event prefix has committed. Each registration waits for its
 prefix to commit before the next source control is sent. A partial bootstrap is not retried
 in the same native session. Source limits are checked before sending the first registration.
 
-The `native-loop-v2` source contract is part of the configuration digest and entry version.
+Configured MCP sources additionally require `mcp_source.register`,
+`mcp_source.unregister`, `mcp_source.query` and the `mcp` event family before
+session creation. The supervisor adds `--allow-controlled-mcp-sources` only after
+resolving at least one authorized App or Mem proxy source, and includes the effective
+arguments in the configuration digest. Unbound and standalone launches do not opt in.
+Bound launches require a runtime that recognizes this option; unbound launches retain
+compatibility with earlier runtimes that satisfy their remaining capability requirements.
+The runtime defaults to disabled source controls; general permission bypass does not
+enable them. This launch option trusts the supervisor to authorize subprocess commands
+and environments; it is not a per-command sandbox policy. Only the existing authorized
+local proxy descriptors are registered: the executable, server identity, arguments and renewable activation
+credential-file reference. Upstream endpoints, headers and credentials remain in
+the daemon. Source registration uses the same durable receipt and ordered event
+barrier as prompts and skills. The pinned upstream connection explicitly uses MCP
+`2025-11-25` with its initialize/initialized lifecycle. The batch is validated before its first send,
+including the native limit of 16 MCP sources; partial registration is never
+retried on an uncertain session.
+
+Native source events project validated identifiers and bounded catalogue counts;
+launch data and arbitrary diagnostic fields are not history metadata. The native
+runtime owns each source child and fences invocation to its session. Shared proxy
+authorization is checked on calls, so cached catalogue entries do not retain
+authority after an App or activation is revoked. Transport loss after a write
+preserves the proxy's uncertain operation record and does not authorize retries.
+Semantic shutdown must retire source children; the outer supervisor independently
+proves process-tree cleanup before replacement execution.
+
+The `native-loop-v5` source contract is part of the configuration digest and entry version.
 It keeps activation, local launch, native runtime and native session identities distinct;
 native subagents receive no independent outer membership, mailbox or execution credentials.
 An ordinary completed turn is insufficient to finish an activation: the existing structured
@@ -335,12 +490,16 @@ finish service owns that outcome. A terminal turn without an outcome becomes int
 only after existing supervised cleanup. A live input/approval wait keeps its callback owner;
 canceling that wait may end the native turn through input-discarded alone.
 
-The pinned build has no cross-process resume, durable approval recovery, controlled MCP source
-registration, or semantic-guard event contract. Resume policies and configured native MCP/App
-bindings therefore fail preflight. Loop launches disable ambient extension discovery and native
-memory facilities. They never replace missing controlled sources with ambient configuration.
+The pinned build supports typed semantic guard input/events, native session resume and
+durable approval decisions. Outer loop Resume admission negotiates the complete recovery
+capability set before opening; incompatible runtimes fail without a fresh fallback. MCP/App/Mem launch validation
+reuses the shared binding rules; older runtimes without the negotiated source controls
+fail startup before the entry prompt. Loop launches disable ambient extension discovery
+and native memory facilities. They never replace missing controlled sources with ambient configuration.
 Card/task source binding, stable task memory prefixes and activation trace enrichment are
-implemented. Controlled tool sources and semantic outcome adaptation remain unfinished.
+implemented. Typed semantic declines map through the existing canonical finish transaction;
+clarification questions and reply waits commit together. Assembled configured-provider acceptance
+remains unfinished.
 
 ### 2) Configuration
 
@@ -355,6 +514,7 @@ default_provider = "deepseek"
 default_model = "deepseek-chat"
 startup_timeout_seconds = 120
 shutdown_timeout_seconds = 30
+standalone_session_policy = "fresh"
 ```
 
 The exact field names can evolve during implementation, but the boundary is stable:
@@ -366,6 +526,10 @@ The exact field names can evolve during implementation, but the boundary is stab
 
 The binary defaults to `rara`; provider/model defaults are optional and leave
 runtime-owned credential resolution intact. Only `stdio-jsonl` is accepted.
+`standalone_session_policy` accepts `fresh` (default) or `resume`; it does not override a
+Team loop's separately configured session policy. Select resume only for a runtime with durable
+recovery support. Configuration or effective workspace changes require explicit fresh selection
+or a stopped-session continuity reset before another resume attempt.
 Timeouts must be 1-600 seconds. Explicit overrides are
 `AGENTHUB_RARA_BINARY`, `AGENTHUB_RARA_PROVIDER`, `AGENTHUB_RARA_MODEL`,
 `AGENTHUB_RARA_STARTUP_TIMEOUT_SECONDS` and
@@ -700,6 +864,48 @@ Guardrails:
   against Rara's own internal agent cards, but AgentHub does not interpret those internal cards as
   AgentHub Team membership.
 
+### Guarded Activation Delivery
+
+Native loop startup negotiates `input.submit_guarded_prompt` and the
+`semantic_guard` event family before creating a session. The outer adapter supplies
+bounded, launch-pinned role/Card/work context from the canonical activation sources.
+A guard sees addressed canonical task/message data; it must not classify only the
+generic loop-entry instruction or consult another member's history. Oversized
+context is rejected explicitly rather than silently truncated into a verdict. The adapter
+admits at most 256 work sources; role text is bounded to 4 KiB, Card to 8 KiB, and
+work/prompt text to 64 KiB each.
+
+The runtime emits a strict `compatible`, `mismatch`, or `needs_clarification`
+decision before ordinary worker execution. Reasons and questions are nonempty,
+control-free text of at most 1024 UTF-8 bytes. Invalid/unavailable classification
+retains the runtime's advisory fallback and never fabricates a business verdict.
+Ordinary ACP activation delivery and unguarded interactive prompts retain their
+existing behavior.
+
+The adapter persists the ordered semantic event as scoped runtime history before
+observing its effect. It accepts a decline only after the same runtime/session/turn
+has a normal terminal event and a unique prior decision from runtime provenance. The terminal
+turn must match the persisted ACK for this activation's exact entry request ID. Cancellation, interruption,
+failure, a replay gap, a conflicting decision, or worker activity after a decline
+cannot establish an outcome. Safe reasons stay in this durable history, outside
+content-free telemetry; activation history already joins the owning local session.
+
+A current activation fence maps mismatch to `no_actionable_work`. Clarification maps
+to `waiting` with `input`, a canonical conversation question and a one-shot thread
+reply registration in one SQLite transaction. The ordinary finish receipt remains
+the canonical outcome authority; an existing finish prevents all semantic side
+effects. This reuses the conversation body outbox and scheduler observation latch,
+without changing the `LoopOutcome` wire format or adding a second delivery journal.
+
+A clarification uses the unique task conversation when unambiguous, otherwise the
+canonical shared Team conversation. The question is a new reply root. Its registration
+waits for a later reply to that exact root and retains activation provenance. A reply
+committed immediately after the question cannot be lost; replacement execution still
+waits for verified cleanup of the original process. Duplicate or stale decisions
+cannot publish another question or overwrite a newer generation's result. If the daemon stops
+before this control-store transaction commits, recovery keeps the activation interrupted with
+its runtime history; it does not infer a finish or republish a question from a bare reason string.
+
 ### 10) Remote Nodes
 
 Remote Rara execution should reuse AgentHub Agent Node placement:
@@ -737,6 +943,21 @@ Phase 0 spec validation:
 Phase 1 implementation validation:
 
 - focused AgentHub config tests for Rara-specific config parsing and environment overrides
+- standalone SQLite migration/owner races, exact guardian retirement, loop admission exclusion,
+  opening ambiguity/repair and reset authorization; actual native process history/approval/recovery
+  checks across a reopened database and new manager
+- standalone and Team browser recovery against real API/SSE handlers and a native process:
+  confirmation sends no input or model request, explicit subsequent input executes once, and refresh
+  preserves the response and cleared recovery state; qualify configured providers separately
+- opt-in configured-provider standalone checks for actual assistant recall after restart, approval
+  callback replacement and uncertain-effect reconciliation; private explicit credentials and exact
+  controlled-command approval, separately identified from installed-producer and Team qualification
+- opt-in configured-provider Team checks for task/Card semantic outcomes, controlled App/Mem
+  scope/revocation/uncertainty and a signed dispatch/report/acceptance cycle with native private
+  tasks; synthetic canonical inputs, exact allow-once command checks and isolated provider state
+- Team database/manager restart checks for retained assistant context, task memory/mailbox identity,
+  replacement approval callbacks and explicit uncertain-effect review; no automatic continuation
+  or repeated side effect, with later work carried by a new durable activation
 - provider adapter unit tests for app-server handshake and capability negotiation
 - input mapping tests for submit, follow-up, pending answer, approval, cancel, and interrupt
 - request ack tests for accepted, queued, rejected, unknown-before-ack, and idempotent retry
@@ -756,6 +977,17 @@ Phase 1 implementation validation:
 - local smoke test that starts `rara` in app-server mode, sends one prompt, receives structured
   output, and shuts down cleanly
 - remote-node smoke test after local mode is stable
+
+Remaining local capability acceptance:
+
+| Capability | Required evidence before enabling it |
+| --- | --- |
+| Controlled MCP/App/Mem sources | A negotiated source reaches the real native tool registry through the existing proxy; foreign scope, revoked bindings and ambient source discovery remain rejected, and uncertain writes are not replayed. |
+| Semantic outcomes | `compatible`, `mismatch` and `needs_clarification` produce distinct canonical outcomes under the current activation fence; ordinary provider completion cannot substitute for structured finish. |
+| Cross-process continuity | Restart into a new local launch preserves provider continuity and canonical task/IM identity only after verified old-owner cleanup; incompatible continuity cannot silently create a fresh session under a resume policy. |
+| Durable approvals | A committed pending approval survives process loss and binds its answer to the recovered owned interaction; stale, duplicate, rejected and uncertain decisions cannot grant replacement execution. |
+| Recovery completion | Resolution requires its matching committed ACK/event prefix, records waiting for input without a continuation, survives caller disconnect and releases the reservation only after supervised cleanup; later durable work receives a new activation. |
+| Assembled runtime | Installed-binary and configured-provider evidence covers these capabilities together, browser-independent execution, retained history and nested-subteam identity isolation; fixture-only evidence is identified separately. |
 
 ## Operational Notes
 
@@ -793,13 +1025,22 @@ Phase 1 implementation validation:
 
 ## Source Journals
 
+- [2026-10-07: Native runtime qualification](../journal/2026-10-07-native-runtime-qualification.md)
+- [2026-10-07: Native Team provider acceptance](../journal/2026-10-07-native-team-provider-acceptance.md)
+- [2026-10-07: Standalone native continuity](../journal/2026-10-07-native-standalone-continuity.md)
+- [2026-10-07: Native resume acceptance](../journal/2026-10-07-native-resume-acceptance.md)
+
+- [2026-10-07: Native opening reconciliation](../journal/2026-10-07-native-opening-reconciliation.md)
+- [2026-10-07: Native recovery controls](../journal/2026-10-07-native-recovery-controls.md)
+- [2026-10-06: Native recovery entry](../journal/2026-10-06-native-recovery-entry.md)
+- [2026-10-06: Native conversation binding](../journal/2026-10-06-native-conversation-binding.md)
+- [2026-10-05: Native capability rollout](../journal/2026-10-05-native-capability-rollout.md)
 - [2026-09-18: Direct runtime loop activation](../journal/2026-09-18-native-loop-activation.md)
 - [2026-09-18: Direct runtime event storage](../journal/2026-09-18-runtime-event-storage.md)
 - [2026-09-18: Direct runtime transport](../journal/2026-09-18-rara-local-transport.md)
 
 - [2026-06-06-rara-app-server-phase1-contract.md](../journal/2026-06-06-rara-app-server-phase1-contract.md)
 - [2026-06-08-rara-team-modes-requirements.md](../journal/2026-06-08-rara-team-modes-requirements.md)
-- The first implementation PR should add or update a dated journal that links back to this spec.
 
 ## External References
 

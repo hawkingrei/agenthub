@@ -13,6 +13,7 @@ export type SendAcpInputOptions = {
 };
 
 export type AgentsWorkbenchProps = {
+  recoveryToken?: string;
   activeAgent: string;
   activeAgentRecord: AgentRecord | null;
   activeSessionId: string | null;

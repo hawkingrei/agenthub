@@ -18,6 +18,10 @@ use uuid::Uuid;
 mod controls;
 mod input;
 mod permissions;
+mod reconciliation;
+mod recovery;
+mod recovery_query;
+mod semantic_guard;
 mod sources;
 
 use super::{AgentManager, events::DurableEvents, receipts};
@@ -41,6 +45,8 @@ pub struct RaraHandle {
     permission: Arc<Mutex<Option<permissions::LivePermission>>>,
     state: Arc<RwLock<LiveState>>,
     delivery: watch::Sender<Option<bool>>,
+    loop_owner: Option<recovery::LoopOwner>,
+    standalone_owner: Option<super::standalone::StandaloneOwner>,
 }
 
 struct LiveState {
@@ -51,6 +57,12 @@ struct LiveState {
     sources_registered: bool,
     terminal_turn: bool,
     input_attempted: bool,
+    guard: Option<semantic_guard::GuardedActivation>,
+    recovery: Option<agenthub_rara::RecoveryStatus>,
+    recovery_sequence: u64,
+    recovery_reconciled: bool,
+    pending_tool_call: Option<String>,
+    entry_ready: bool,
 }
 
 struct Replay {
@@ -68,19 +80,30 @@ impl Deref for RaraHandle {
 }
 
 impl RaraHandle {
-    pub(super) async fn create(
+    pub(super) async fn open(
         manager: &AgentManager,
         client: Client,
         store: RuntimeEventStore,
         agent_id: &str,
         output_tx: broadcast::Sender<AgentOutput>,
+        config: &agenthub_config::RaraLaunchConfig,
+        workspace: &std::path::Path,
     ) -> anyhow::Result<Self> {
+        let opening = manager
+            .begin_native_conversation(
+                agent_id,
+                store.local_session_id(),
+                config,
+                client.handshake(),
+                workspace,
+            )
+            .await?;
         let ack = receipts::control(
             &manager.daemon_tasks,
             &client,
             &store,
             None,
-            ControlRequest::CreateSession,
+            opening.request,
         )
         .await?;
         let RuntimeRequestAck::Accepted {
@@ -89,14 +112,43 @@ impl RaraHandle {
             ..
         } = ack
         else {
-            anyhow::bail!("direct runtime rejected session creation");
+            anyhow::bail!("direct runtime rejected conversation opening");
         };
         let stream = store
             .stream(&session_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("direct runtime stream ownership is missing"))?;
+        if let Some(reservation) = &opening.loop_owner {
+            agenthub_db::loop_runtime::LoopStore::new(manager.db.clone())
+                .bind_native_session(reservation, &session_id, chrono::Utc::now().timestamp())
+                .await?;
+        }
+        if let Some(owner) = &opening.standalone_owner {
+            agenthub_db::native_sessions::NativeSessionStore::new(manager.db.clone())
+                .bind_conversation(owner, &session_id, chrono::Utc::now().timestamp())
+                .await?;
+        }
         let (delivery, _) = watch::channel(None);
         let (progress, _) = watch::channel(0);
+        let loop_owner = if let Some(reservation) = opening.loop_owner {
+            Some(recovery::LoopOwner {
+                store: agenthub_db::loop_runtime::LoopStore::new(manager.db.clone()),
+                reservation,
+                operations: manager.loop_operation_gate(agent_id).await,
+            })
+        } else {
+            None
+        };
+        let standalone_owner = if let Some(reservation) = opening.standalone_owner {
+            Some(super::standalone::StandaloneOwner {
+                store: agenthub_db::native_sessions::NativeSessionStore::new(manager.db.clone()),
+                reservation,
+                operations: manager.loop_operation_gate(agent_id).await,
+            })
+        } else {
+            None
+        };
+        let entry_ready = loop_owner.is_none();
         Ok(Self {
             client,
             store,
@@ -119,8 +171,16 @@ impl RaraHandle {
                 sources_registered: false,
                 terminal_turn: false,
                 input_attempted: false,
+                guard: None,
+                recovery: None,
+                recovery_reconciled: false,
+                recovery_sequence: 0,
+                pending_tool_call: None,
+                entry_ready,
             })),
             delivery,
+            loop_owner,
+            standalone_owner,
         })
     }
 
@@ -191,7 +251,7 @@ impl RaraHandle {
                         OutputFrame::ReplayGap(gap) => {
                             anyhow::ensure!(gap.runtime_id == self.store.runtime_id() && gap.session_id == self.stream.native_session_id(), "direct replay gap belongs to another session");
                             let receipt = self.store.request_receipt(&gap.request_id).await?.ok_or_else(|| anyhow::anyhow!("direct replay gap has no control receipt"))?;
-                            anyhow::ensure!(receipt.kind == RuntimeRequestKind::CreateSession || replay.as_ref().is_some_and(|r| r.id == gap.request_id && r.after == gap.requested_after), "direct replay gap has an invalid request");
+                            anyhow::ensure!(matches!(receipt.kind, RuntimeRequestKind::CreateSession | RuntimeRequestKind::ResumeSession) || replay.as_ref().is_some_and(|r| r.id == gap.request_id && r.after == gap.requested_after), "direct replay gap has an invalid request");
                             let after = events.sequence();
                             if after + 1 < gap.oldest_available || after > gap.latest {
                                 self.stream.record_replay_gap(RuntimeReplayGap { requested_after: after, oldest_available: gap.oldest_available, latest: gap.latest }).await?;
@@ -263,14 +323,72 @@ impl RaraHandle {
         state.sequence = sequence;
         match effect {
             EventEffect::Snapshot(snapshot) => {
+                if state.pending != snapshot.pending_input {
+                    state.pending_tool_call = None;
+                }
                 state.phase = snapshot.phase;
                 state.pending = snapshot.pending_input;
             }
+            EventEffect::Recovery(recovery) => {
+                if let Some(blocked) = &recovery.blocked {
+                    anyhow::ensure!(
+                        state.pending.is_none(),
+                        "native recovery conflicts with pending input"
+                    );
+                    state.phase = SessionPhase::RecoveryRequired {
+                        recovery_id: blocked.recovery_id.clone(),
+                    };
+                } else if matches!(state.phase, SessionPhase::RecoveryRequired { .. }) {
+                    state.phase = SessionPhase::Idle;
+                }
+                anyhow::ensure!(
+                    recovery.waiting_turn_id.as_deref()
+                        == state
+                            .pending
+                            .as_ref()
+                            .map(|pending| pending.turn_id.as_str()),
+                    "native recovery waiting identity changed"
+                );
+                state.recovery = Some(recovery);
+                state.recovery_sequence = sequence;
+            }
+            EventEffect::Reentry(evaluation) => {
+                anyhow::ensure!(
+                    recovery::matches_target(&evaluation.target, &state),
+                    "native reentry result targets a changed session phase"
+                );
+                let guard = state.guard.as_mut().ok_or_else(|| {
+                    anyhow::anyhow!("native reentry has no configured activation")
+                })?;
+                anyhow::ensure!(
+                    evaluation.origin.request_id == guard.request_id,
+                    "native reentry request changed"
+                );
+                let check = guard
+                    .reentry
+                    .as_mut()
+                    .ok_or_else(|| anyhow::anyhow!("native reentry was not requested"))?;
+                anyhow::ensure!(
+                    check.target == evaluation.target && check.evaluation.is_none(),
+                    "native reentry target or result changed"
+                );
+                check.evaluation = Some((sequence, evaluation.result));
+            }
             EventEffect::TurnStarted { turn_id } => {
+                if let Some(guard) = &mut state.guard {
+                    guard.completed = None;
+                }
                 state.terminal_turn = false;
                 state.phase = SessionPhase::Running { turn_id };
             }
-            EventEffect::TurnEnded { turn_id, outcome } => {
+            EventEffect::TurnEnded {
+                turn_id,
+                outcome,
+                semantic,
+            } => {
+                if let Some(guard) = &mut state.guard {
+                    guard.completed = semantic.map(|decision| (turn_id.clone(), decision));
+                }
                 let awaiting_input = matches!(outcome, agenthub_rara::TurnEnd::Finished { reason: Some(ref reason) } if reason == "awaiting_input");
                 if !awaiting_input {
                     state.terminal_turn = true;
@@ -296,7 +414,10 @@ impl RaraHandle {
                 pending,
                 tool_call_id,
             } => {
-                interaction = Some((pending.clone(), tool_call_id));
+                state.pending_tool_call = Some(tool_call_id.clone());
+                if state.entry_ready {
+                    interaction = Some((pending.clone(), tool_call_id));
+                }
                 state.terminal_turn = false;
                 state.phase = SessionPhase::AwaitingInput {
                     turn_id: pending.turn_id.clone(),
@@ -312,6 +433,7 @@ impl RaraHandle {
                 .is_some_and(|p| p.turn_id == waiting_turn) =>
             {
                 state.pending = None;
+                state.pending_tool_call = None;
                 state.terminal_turn = terminal;
                 if matches!(&state.phase, SessionPhase::AwaitingInput { turn_id } if turn_id == &waiting_turn)
                 {
