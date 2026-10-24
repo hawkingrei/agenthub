@@ -80,10 +80,14 @@ Active follow-up: [TODO](../todo.md).
 
 The blocking registry review found that stdio launches enabled executable source
 registration unconditionally. The corrected candidate is
-`b38b32b839b67a75323d92c3eaff2691eec8fa46`, extending the earlier `df7ed52b` assembly
-with default-off source controls and explicit operator opt-in. Its stripped Linux
+`9b250427c277ede950f128926c169be1a56a80f9`, extending the earlier `df7ed52b` assembly
+with default-off source controls and explicit operator opt-in from `b38b32b8`.
+An ordinary merge includes upstream main `ebf7bb66`; five foundation conflicts
+retain the explicit `2025-11-25` protocol and current source/session contracts.
+Runtime and test source files remain identical to `b38b32b8`; workflow actions
+and locked `insta`, `libc`, `tokio` and `uuid` dependencies are refreshed. Its stripped Linux
 executable has SHA-256
-`7d0808e7207180f04ac1f85887ee027eb72bfdc0793203407ec4ffb3464f0045`.
+`ec65379669ffb89ba651a6e012f59d24f8d23916203f79d37c8e32f69b60f705`.
 
 The six protocol frames were recaptured from this executable with
 `--allow-controlled-mcp-sources`; they are unchanged. The fixture now records that
@@ -99,6 +103,8 @@ registration and semantic shutdown remain usable. The real App/Mem proxy test
 passes both normal and lost-response scenarios, including scope rejection,
 immediate revocation and durable uncertainty without replay. These checks use
 the exact candidate above and isolated localhost services.
+They were repeated after the main merge, reusing the unchanged consumer test
+executables with the newly built producer binary.
 
 Automatic CLI, stdio and manager regressions remain assigned to their existing
 CI lanes. The CI-covered producer process smoke suite was not repeated locally.
@@ -112,7 +118,7 @@ AGENTHUB_RARA_TEST_BINARY=/absolute/path/to/candidate cargo test --locked -p age
 
 The former private archive and installed executable paths were absent when work
 resumed. The new private candidate is under
-`target/loop-review-validation/qualified-native/rara-controlled-source-optin`;
+`target/loop-review-validation/qualified-native/rara-main-integrated-optin`;
 raw build and qualification logs stay outside Git. Upstream publication/CI,
 installed-runtime qualification and external configured-provider Team acceptance
 remain open; the historical results above are not new acceptance evidence.

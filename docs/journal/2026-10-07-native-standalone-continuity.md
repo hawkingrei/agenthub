@@ -132,6 +132,20 @@ a private native provider JSON file. These checks make real model requests and r
 ordinary CI. They qualify standalone candidate behavior only; Team/MCP/semantic/nested-subteam
 provider acceptance and installed-producer publication remain open.
 
+## Coverage Follow-Up (2026-10-25)
+
+The Rust coverage run for `da08cd8d` exposed an immediate-reacquisition assumption in
+`standalone_replacement_requires_cleanup_even_after_session_exit_marking`. A concurrent process
+test can inherit the prepared witness descriptor between `fork` and `exec`, briefly retaining
+the file lock after the parent drops its copy. The production cleanup fence correctly refuses
+replacement while that lock is held.
+
+The regression now waits at most five seconds, retrying only the typed `ReservationHeld` refusal.
+Each refusal must retain the original execution owner and produce no native opening. Every other
+error fails immediately, and successful replacement must still advance to generation two.
+Production cleanup behavior is unchanged. Validation belongs to the existing Cargo, Bazel and
+Rust coverage CI lanes; those suites are not repeated locally.
+
 ## Follow-Ups
 
 - Complete configured-provider Team/MCP/semantic/nested-subteam acceptance, installed-producer

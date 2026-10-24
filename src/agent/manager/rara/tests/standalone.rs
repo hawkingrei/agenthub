@@ -1,5 +1,5 @@
 use agenthub_config::RaraSessionPolicy;
-use agenthub_db::native_sessions::NativeSessionStore;
+use agenthub_db::native_sessions::{NativeSessionError, NativeSessionStore};
 use serde_json::json;
 
 use super::*;
@@ -385,11 +385,37 @@ async fn standalone_replacement_requires_cleanup_even_after_session_exit_marking
     );
     // The prepared witness proves that no child passed the guardian startup fence.
     drop(witness);
-    fixture
-        .manager
-        .start_agent(&fixture.agent_id)
-        .await
-        .unwrap();
+    // Parallel process tests can retain this CLOEXEC descriptor between fork and exec.
+    // Retry only the cleanup fence, and prove each refusal leaves the old owner intact.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match fixture.manager.start_agent(&fixture.agent_id).await {
+                Ok(_) => break,
+                Err(error) => {
+                    assert!(
+                        matches!(
+                            error.downcast_ref::<NativeSessionError>(),
+                            Some(NativeSessionError::ReservationHeld)
+                        ),
+                        "unexpected replacement error: {error:#}"
+                    );
+                    assert!(openings(&fixture).is_empty());
+                    assert_eq!(
+                        store
+                            .active_owner(&fixture.agent_id)
+                            .await
+                            .unwrap()
+                            .unwrap()
+                            .owner,
+                        owner
+                    );
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            }
+        }
+    })
+    .await
+    .expect("replacement after inherited witness descriptors close");
     assert_eq!(
         store
             .active_owner(&fixture.agent_id)

@@ -379,7 +379,7 @@ provider raw JSON must stay redacted from diagnostics metadata by default.
   timeout.
 
 The compatible protocol fixture is pinned to upstream commit
-`b38b32b839b67a75323d92c3eaff2691eec8fa46`. This locally assembled candidate includes
+`9b250427c277ede950f128926c169be1a56a80f9`. This locally assembled candidate includes
 the native capabilities, terminal-input prerequisite and explicit controlled-source launch opt-in;
 the captured fixture enables that opt-in. Upstream publication and applicable CI
 remain integration gates. See [candidate qualification](../journal/2026-10-07-native-runtime-qualification.md).
